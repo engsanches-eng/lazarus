@@ -11,17 +11,9 @@
 # one the nightly holds.
 name: Windows builder
 
+# (lazarus) Not on pushes, tags or pull requests: Lazarus is built for Linux (SteamOS, the Legion Go S) for now. Started by
+# hand from the Actions tab (Run workflow) when a Windows build is wanted
 on:
-  push:
-    branches: [main]
-    tags: ['*']
-  # (not for a pull request that changes only documentation or the release manifest: nothing of them is compiled or
-  # packaged but readme.md, which is only copied in. A push to main builds every time)
-  pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.release-please-manifest.json'
   workflow_dispatch:
   workflow_call:
     inputs:
