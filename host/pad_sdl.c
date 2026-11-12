@@ -370,8 +370,8 @@ static void pads_poll(void) {
                 pads[slot].has_bias = 0;
                 pads[slot].vendor = hos_sdl_pad_vendor(gc);
                 pads[slot].steam = hos_sdl_pad_steam_handle(gc);
-                pads[slot].motion_only = 0;   /* (the poll below decides, and says so) */
                 pads[slot].gave_input = 0;
+                pads[slot].motion_only = 0;   /* (the poll below decides, and says so) */
                 hos_sdl_pad_log_connection(gc, pads[slot].motion, pads[slot].steam != 0);
             }
         }
