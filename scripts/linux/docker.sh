@@ -1,7 +1,7 @@
 #!/bin/bash
 # The Linux AppImage built in a container (scripts/linux/Dockerfile: Ubuntu 22.04, as CI), on any distribution:
 #
-#   scripts/linux/docker.sh            deps.sh, then appimage.sh -> build-linux/Hookshot-<version>-x86_64.AppImage
+#   scripts/linux/docker.sh            deps.sh, then appimage.sh -> build-linux/Lazarus-<version>-x86_64.AppImage
 #   scripts/linux/docker.sh deps       deps.sh only
 #   scripts/linux/docker.sh shell      a shell in the build environment
 #   scripts/linux/docker.sh <command>  any other command, run in the checkout

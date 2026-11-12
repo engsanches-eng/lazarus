@@ -100,8 +100,8 @@ publish() {   # tag -> its release published
 table() {
     local appimage="the \`.AppImage\`" zip="the \`-Windows-x64.zip\`"
     if [[ $1 =~ ^v[0-9] ]]; then
-        appimage="\`Hookshot-$1-x86_64.AppImage\`"
-        zip="\`Hookshot-$1-Windows-x64.zip\`"
+        appimage="\`Lazarus-$1-x86_64.AppImage\`"
+        zip="\`Lazarus-$1-Windows-x64.zip\`"
     fi
     cat <<EOF
 $MARK
@@ -109,10 +109,10 @@ $MARK
 
 | On | Download |
 |---|---|
-| Windows | \`HookshotBuilder.exe\`, the setup |
+| Windows | \`LazarusBuilder.exe\`, the setup |
 | Linux, Steam Deck | $appimage |
 
-You need your own copy of the game. \`hookshot-setup.txt\`, \`hookshot-linux.txt\` and the \`.zsync\` are for the updaters, and $zip (the setup and its \`recomplauncher.json\`) for RecompLauncher: on Windows, download \`HookshotBuilder.exe\` instead. To check a download: \`sha256sum -c --ignore-missing SHA256SUMS\`, or \`gh attestation verify <file> -R $GH_REPO\`.
+You need your own copy of the game. \`hookshot-setup.txt\`, \`hookshot-linux.txt\` and the \`.zsync\` are for the updaters, and $zip (the setup and its \`recomplauncher.json\`) for RecompLauncher: on Windows, download \`LazarusBuilder.exe\` instead. To check a download: \`sha256sum -c --ignore-missing SHA256SUMS\`, or \`gh attestation verify <file> -R $GH_REPO\`.
 EOF
 }
 
@@ -120,7 +120,7 @@ links() {   # tag [id] -> big links to the Windows setup and the Linux AppImage 
     local id=${2:-} names exe appimage base="https://github.com/$GH_REPO/releases/download/$1"
     [[ -n $id ]] || id=$(id_of "$1")
     names=$(assets "$id" | jq -r '.[].name')
-    exe=$(grep -xF HookshotBuilder.exe <<<"$names" || true)
+    exe=$(grep -xF LazarusBuilder.exe <<<"$names" || true)
     appimage=$(grep -E '\.AppImage$' <<<"$names" | head -n1 || true)
     [[ -n $exe || -n $appimage ]] || return 0
     echo "$LINKS"

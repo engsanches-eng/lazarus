@@ -23,9 +23,9 @@ import zipfile
 from part_links import SYSROOT_PART, is_absolute_link, relative_sysroot_link
 
 LIST_NAME = "hookshot-linux.txt"
-LATEST_LIST = "https://github.com/NotRexed/Hookshot/releases/latest/download/" + LIST_NAME
-LATEST_API = "https://api.github.com/repos/NotRexed/Hookshot/releases/latest"
-RELEASES_API = "https://api.github.com/repos/NotRexed/Hookshot/releases?per_page=20"
+LATEST_LIST = "https://github.com/engsanches-eng/lazarus/releases/latest/download/" + LIST_NAME
+LATEST_API = "https://api.github.com/repos/engsanches-eng/lazarus/releases/latest"
+RELEASES_API = "https://api.github.com/repos/engsanches-eng/lazarus/releases?per_page=20"
 # (the update tracks: the builder's Track choice, by default the track of the build installed. The game's own check,
 # host/hos_update.c, and the Windows builder, Updater.cs, use the same rules)
 TRACKS = ("release", "rc", "nightly")
@@ -130,7 +130,7 @@ def release_of(tag):
 def list_url(tag=None):
     if not tag:
         return LATEST_LIST
-    return "https://github.com/NotRexed/Hookshot/releases/download/%s/%s" % (release_of(tag), LIST_NAME)
+    return "https://github.com/engsanches-eng/lazarus/releases/download/%s/%s" % (release_of(tag), LIST_NAME)
 
 
 def newest_release(tags):

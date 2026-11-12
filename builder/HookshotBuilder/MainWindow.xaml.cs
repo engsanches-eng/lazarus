@@ -325,7 +325,7 @@ public partial class MainWindow : Window
     // ---- Save my pipeline list: the game folder's pipeline list and the "Submit your pipelines" issue's template, filled in,
     // zipped into the Downloads folder by nx2/pipeline_share.py (as the Linux builder and the game's menu do), then the template
     // on the clipboard, the zip shown in its folder and the issue opened. Nothing is uploaded: the player attaches the zip ----
-    const string ShareIssue = "https://github.com/NotRexed/Hookshot/issues/2034";
+    const string ShareIssue = "https://github.com/engsanches-eng/lazarus/issues/2034";
 
     async void LaunchShareClick(object sender, RoutedEventArgs e)
     {
@@ -1370,7 +1370,7 @@ public partial class MainWindow : Window
             Application.Current.Shutdown();
             return;
         }
-        Process.Start(new ProcessStartInfo("https://github.com/NotRexed/Hookshot/releases/latest") { UseShellExecute = true });
+        Process.Start(new ProcessStartInfo("https://github.com/engsanches-eng/lazarus/releases/latest") { UseShellExecute = true });
     }
 
     // ================= the update (Updater.cs): the game started this app with --update <folder> =================

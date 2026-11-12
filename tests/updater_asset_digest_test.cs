@@ -104,7 +104,7 @@ namespace DigestFixture
         public readonly List<double> Progress = new();
         public int MetadataRequests;
         public string Cache => Path.Combine(Root, "HookshotBuilder", "update");
-        public string Setup => Path.Combine(Cache, "HookshotBuilder.exe");
+        public string Setup => Path.Combine(Cache, "LazarusBuilder.exe");
         public string Game => Path.Combine(Root, "authored-game-folder");
 
         public State()
@@ -128,7 +128,7 @@ namespace DigestFixture
                 ["name"] = name, ["browser_download_url"] = "https://fixture.invalid/browser",
                 ["url"] = "https://fixture.invalid/api", ["size"] = served.Length, ["digest"] = hash
             };
-            assets.Add(Asset(zip ? "HookshotBuilder.zip" : "HookshotBuilder.exe", digest));
+            assets.Add(Asset(zip ? "HookshotBuilder.zip" : "LazarusBuilder.exe", digest));
             if (omitDigest) assets[0].Remove("digest");
             if (list) assets.Add(new() { ["name"] = "hookshot-setup.txt" });
             if (unusedBadZip) assets.Add(Asset("HookshotBuilder.zip", null));

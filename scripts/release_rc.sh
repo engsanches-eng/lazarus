@@ -47,10 +47,10 @@ candidates=$(jq -r '[.[] | select((.draft | not) and (.tag_name | test("^v[0-9]+
 src= tag= files=
 while read -r id t; do
     [[ -n $id ]] || continue
-    files=$(assets "$id" | jq -c --arg a "Hookshot-$t-x86_64.AppImage" \
+    files=$(assets "$id" | jq -c --arg a "Lazarus-$t-x86_64.AppImage" \
         '[.[] | select(.name == $a or .name == ($a + ".zsync")) | {id, name, digest}] | sort_by(.name)')
     if [[ $(jq length <<<"$files") == 2 ]]; then src=$id tag=$t; break; fi
-    echo "$t has no Hookshot-$t-x86_64.AppImage and .zsync: passed over"
+    echo "$t has no Lazarus-$t-x86_64.AppImage and .zsync: passed over"
 done <<<"$candidates"
 if [[ -z $src ]]; then
     echo "no published release candidate or release has its AppImage and .zsync: $RC is left as it is"
