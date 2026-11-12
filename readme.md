@@ -1,22 +1,39 @@
-> **Lazarus 2.2** (fork for handhelds: Legion Go S, SteamOS). Starts fullscreen, in the game's own 16:9 shape (black bars above and below on a 16:10 screen). After a build, Hookshot Builder adds the
-> game to Steam's library as a non-Steam game, **Lazarus**, which starts from Gaming Mode with the handheld's own controls
-> (Steam must be closed for that: the builder offers to close it; going back to Gaming Mode starts it again). From a
-> terminal: `Lazarus-*.AppImage --add-to-steam [game folder]`.
-
 <h1 align="center">
   <br>
   <a>
-  <img src="assets/hookshot.png" alt="Hookshot" width="200">
+  <img src="assets/hookshot.png" alt="Lazarus" width="200">
 </a>
 
   <br>
-  <b>Hookshot</b>
+  <b>Lazarus</b>
   <br>
 </h1>
 
-<h4 align="center">The Legend of Zelda: Ocarina of Time (Nintendo Switch 2) running natively on Windows & Linux, with no emulator.
+<h4 align="center">The Legend of Zelda: Ocarina of Time (Nintendo Switch 2) running natively on Linux handhelds, with no emulator.
+<br>A fork of <a href="https://github.com/NotRexed/Hookshot">Hookshot</a>, optimized for the <b>Steam Deck</b> and the <b>Lenovo Legion Go S</b> (SteamOS).
 </h4>
 
+## What Lazarus changes for handhelds
+
+Lazarus is Hookshot tuned to be played on a SteamOS handheld, from Gaming Mode, with the handheld's own controls:
+
+- **Gaming Mode entry.** After a build, the builder adds the game to Steam's library as the non-Steam game **Lazarus**.
+  It starts the game itself, with no launcher window, so Steam Input passes on the handheld's built-in controls. Steam
+  must be closed while the entry is written: the builder offers to close it, and going back to Gaming Mode starts it
+  again. From a terminal: `Lazarus-*.AppImage --add-to-steam [game folder]`.
+- **Fullscreen** by default.
+- **The game's own 16:9 picture**, never stretched: black bars above and below on the 16:10 screens of the Steam Deck
+  and the Legion Go S. Monitor's shape stays in the Insert menu for those who want it.
+- **Updates from this repository**: the builder and the game look for Lazarus releases, not Hookshot's.
+- **Linux only for now**: each release carries `Lazarus-<version>-x86_64.AppImage`. The Windows code is still here
+  (with fixes for handheld controls), but no Windows build is published.
+
+**Tested on:** Lenovo Legion Go S (SteamOS). The Steam Deck runs the same SteamOS and the same Gaming Mode; reports from
+Steam Deck players are welcome in the issues.
+
+As with Hookshot, you need your own copy of the game: the game is built on your own device from it, and nothing of the
+game is in this repository or its releases. The rest of this page is Hookshot's documentation, which applies to Lazarus
+too.
 
 <p align="center">
   <a href="#project-status">Status</a> |
