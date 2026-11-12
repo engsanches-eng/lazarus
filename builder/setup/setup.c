@@ -968,6 +968,11 @@ static int play_folder(const wchar_t *args) {
         say_error(L"No built game to start. Build it first (the game folder needs bin\\hookshot.exe).");
         return 1;
     }
+    /* (lazarus) the game may take the front from the launcher: started from it, this process can pass that right on
+       to the game, which is not the launcher's own child. Without it the launcher stayed in front, the game counted
+       no pad input behind it (host/nn_hid.c game_in_front), and a handheld with no mouse to click the game's window
+       (Legion Go S) had no controls */
+    AllowSetForegroundWindow(pi.dwProcessId);
     WaitForSingleObject(pi.hProcess, INFINITE), GetExitCodeProcess(pi.hProcess, &code);
     CloseHandle(pi.hThread), CloseHandle(pi.hProcess);
     return (int)code;

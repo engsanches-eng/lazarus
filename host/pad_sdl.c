@@ -59,12 +59,14 @@ static struct {
     uint16_t vendor;      /* (hookshot) its USB vendor, and its Steam Input handle: not 0 for a Steam stand-in pad */
     uint64_t steam;
     int motion_only;      /* (host/steam_pads.h) a real Valve pad while a Steam stand-in pad is open: motion, no input */
+    int gave_input;       /* (lazarus) a button or a stick moved since it was opened: SDL reads this pad for real */
 } pads[MAX_PADS];
 static uint32_t pads_opened;
 static SRWLOCK state_lock = SRWLOCK_INIT;
 static uint64_t state_buttons;
 static int32_t state_stick[4];
 static int state_count;
+static int state_live;   /* (lazarus) the open pads that gave input since they were opened (hos_sdl_pads_live) */
 static char state_name[128];   /* the first controller's name (host/prompts.c: the button prompts' Auto) */
 static volatile LONG rumble_low, rumble_high;   /* 0..65535, set by the vibration HLE */
 /* the game's own vibration values per side (0 left, 1 right: {amp_low, freq_low, amp_high, freq_high}), for the pads
@@ -369,6 +371,7 @@ static void pads_poll(void) {
                 pads[slot].vendor = hos_sdl_pad_vendor(gc);
                 pads[slot].steam = hos_sdl_pad_steam_handle(gc);
                 pads[slot].motion_only = 0;   /* (the poll below decides, and says so) */
+                pads[slot].gave_input = 0;
                 hos_sdl_pad_log_connection(gc, pads[slot].motion, pads[slot].steam != 0);
             }
         }
@@ -393,6 +396,7 @@ static void pads_poll(void) {
             hd_rumble_merge(felt[0], felt[1], felt[2]);
             hd_rumble_encode(felt[2], strength, side[2]);
         }
+        int live = 0;   /* (lazarus) the pads below that have given input */
         int stand_in = 0;   /* (hookshot) a Steam stand-in pad open (host/steam_pads.h) */
         for (int i = 0; i < MAX_PADS; i++) stand_in |= pads[i].gc && pads[i].steam;
         for (int i = 0; i < MAX_PADS; i++) {
@@ -467,7 +471,12 @@ static void pads_poll(void) {
             {   /* (motion: the pad last used; a stick counts by which way it is pushed, not by how far) */
                 for (int k = 0; k < 4; k++) sig |= (uint64_t)(v[k] > 0 ? 1 : v[k] < 0 ? 2 : 0) << (32 + 2 * k);
                 if (sig != pads[i].input_sig) pads[i].input_sig = sig, pads[i].used_ns = now;
+                if (sig && !pads[i].gave_input) {
+                    pads[i].gave_input = 1;
+                    hos_log("hid: \"%s\" gave its first input through SDL", hos_sdl_pad_name(gc));
+                }
             }
+            if (pads[i].gave_input) live++;
             if (hd_poll(i, side, now)) continue;
             if (rumble_due(lo, hi, pads[i].rumble_lo, pads[i].rumble_hi, now, pads[i].rumble_ns)) {
                 hos_sdl_pad_rumble(gc, lo, hi, lo || hi ? 1000 : 0);
@@ -481,6 +490,7 @@ static void pads_poll(void) {
         state_buttons = b;
         memcpy(state_stick, s, sizeof s);
         state_count = count;
+        state_live = live;
         state_name[0] = 0;
         for (int i = 0; i < MAX_PADS; i++)
             if (pads[i].gc && !pads[i].motion_only) {   /* (the stand-in's name, not its motion-only pad's) */
@@ -538,6 +548,16 @@ int hos_sdl_pads(uint64_t *buttons, int32_t stick[4]) {
     for (int k = 0; k < 4; k++)
         if ((state_stick[k] < 0 ? -state_stick[k] : state_stick[k]) > (stick[k] < 0 ? -stick[k] : stick[k]))
             stick[k] = state_stick[k];
+    ReleaseSRWLockShared(&state_lock);
+    return n;
+}
+
+/* (lazarus) How many open pads have given input through SDL since they were opened. A pad SDL opens but never hears
+   from (a handheld's second interface, a virtual pad left by a vendor tool: the Legion Go S's built-in controls) no
+   longer keeps XInput from being read (nn_hid.c pads_read) */
+int hos_sdl_pads_live(void) {
+    AcquireSRWLockShared(&state_lock);
+    const int n = state_live;
     ReleaseSRWLockShared(&state_lock);
     return n;
 }

@@ -482,8 +482,13 @@ static DWORD WINAPI display_main(void *p) {
     /* (no activate: shown at the bottom of the z-order, so a game in front keeps its focus) */
     if (noactivate)
         SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    else
+    else {
         ShowWindow(hwnd, SW_SHOW);
+        /* (lazarus) asked to the front: shown from this thread after a long start, the window could stay behind the
+           launcher or the desktop, and on a handheld with no mouse to click it the pad never reached the game.
+           Windows may still refuse; nn_hid.c's game_in_front then treats the desktop as nobody's input */
+        SetForegroundWindow(hwnd);
+    }
     if (getenv("HOS_FULLSCREEN") && atoi(getenv("HOS_FULLSCREEN"))) set_fullscreen(hwnd, 1);
     RAWINPUTDEVICE rid = {1, 2, 0, hwnd};   /* generic desktop mouse: WM_INPUT while the window is in front */
     RegisterRawInputDevices(&rid, 1, sizeof rid);

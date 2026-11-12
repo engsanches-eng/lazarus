@@ -274,6 +274,21 @@ static int game_in_front(void) {
     int front = pid == GetCurrentProcessId();
 #ifndef __EMSCRIPTEN__
     static int last_normal_was_us = 1, was_front = 1;
+#ifdef _WIN32
+    /* (lazarus) No window in front, or only the desktop or the taskbar: no other program has the input, so the game
+       keeps it as it does for an overlay. A handheld (Legion Go S, ROG Ally) started the game from a launcher with no
+       mouse or keyboard to click its window, Windows left the desktop in front, and the pad did nothing */
+    int shell = !w;
+    if (w && !front) {
+        char shell_cls[32] = "";
+        GetClassNameA(w, shell_cls, sizeof shell_cls);
+        shell = !strcmp(shell_cls, "Progman") || !strcmp(shell_cls, "WorkerW") || !strcmp(shell_cls, "Shell_TrayWnd") ||
+                !strcmp(shell_cls, "Shell_SecondaryTrayWnd");
+    }
+    if (shell && !front) {
+        if (last_normal_was_us) front = 1;
+    } else
+#endif
     if (w && !front) {
         const LONG_PTR ex = GetWindowLongPtrA(w, GWL_EXSTYLE);
         const int overlay = (ex & (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)) != 0;
@@ -735,7 +750,22 @@ static void pads_read(uint64_t *buttons, int32_t stick[4]) {
        Only poll XInput when SDL has no open controllers, unless HOS_XINPUT=1 is explicitly requested. */
     static int poll_xinput_env = -1;
     if (poll_xinput_env < 0) poll_xinput_env = env_on("HOS_XINPUT");
-    if (!sdl_pads || poll_xinput_env) {
+    /* (lazarus) SDL's pads keep XInput out only once one of them has given input: a pad SDL opened and never hears
+       from (the Legion Go S's built-in controls, read through XInput) left the game with no controls at all */
+    int hos_sdl_pads_live(void);
+    const int sdl_silent = sdl_pads && !hos_sdl_pads_live();
+    {
+        static int was_silent = -1;
+        if (sdl_silent != was_silent && sdl_pads) {
+            if (sdl_silent)
+                hos_log("hid: no input through SDL's %d controller%s yet: XInput is read too", sdl_pads,
+                        sdl_pads == 1 ? "" : "s");
+            else
+                hos_log("hid: input through SDL's controllers: XInput left to them");
+        }
+        was_silent = sdl_silent;
+    }
+    if (!sdl_pads || sdl_silent || poll_xinput_env) {
         if (!xinput_get) {
             static int64_t load_retry;
             if (now >= load_retry) {
