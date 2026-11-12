@@ -1,4 +1,4 @@
-> **Lazarus 2.2** (fork for handhelds: Legion Go S, SteamOS). Starts fullscreen. After a build, Hookshot Builder adds the
+> **Lazarus 2.2** (fork for handhelds: Legion Go S, SteamOS). Starts fullscreen, in the game's own 16:9 shape (black bars above and below on a 16:10 screen). After a build, Hookshot Builder adds the
 > game to Steam's library as a non-Steam game, **Lazarus**, which starts from Gaming Mode with the handheld's own controls
 > (Steam must be closed for that: the builder offers to close it; going back to Gaming Mode starts it again). From a
 > terminal: `Hookshot-*.AppImage --add-to-steam [game folder]`.
@@ -346,7 +346,7 @@ HDR, Detail, and GPU and memory (last: the rows to change when something is wron
 | | Fullscreen | Off, On (the same as <kbd>F11</kbd>) | On |
 | | V-Sync | Auto, On, Off | Auto |
 | | Window scaling filter | Off, Catmull-Rom, Lanczos | Off |
-| | Aspect ratio | 16:9, Monitor's shape: wider than 16:9, or narrower down to 5:4 (after a restart) | Monitor's shape |
+| | Aspect ratio | 16:9 (the game's own, black bars where the screen's shape differs), Monitor's shape: wider than 16:9, or narrower down to 5:4 (after a restart) | 16:9 |
 | | Ultrawide menus | Full width; Centred, blurred sides; Centred, black bars (with the Aspect ratio at the monitor's shape) | Centred, blurred sides |
 | | HDR | Off, Expanded, Native (the game's) | Off |
 | | HDR paper white | 80 to 400 nits (while HDR is on) | 200 nits |
@@ -446,11 +446,10 @@ HDR, Detail, and GPU and memory (last: the rows to change when something is wron
 - **Output resolution:** its rows below show the sizes for the output you chose. Docked only. On a 1920x1080 display,
   the 1920x1080 option keeps HUD and text sharp when the game fills the screen by mapping them pixel for pixel. At
   3840x2160 the game's render targets get a bigger GPU pool, so a full-size 3D fits. On a 5120x1440 (32:9) ultrawide
-  monitor, 5120x1440 gives a native frame with a sharp HUD. The **Aspect ratio**'s default, Monitor's shape, widens the
-  cameras to the frame's shape and keeps the HUD and movies in the middle 16:9; at 16:9, the game's 16:9 picture is
-  stretched across the 32:9 output, sharp but wide. Options saved by an older version at 16:9, the default then, move to
-  Monitor's shape on a screen narrower than 16:9 (16:10 such as the Steam Deck's, or 4:3), where 16:9 only adds bars above
-  and below; an ultrawide keeps its 16:9. For a size the menu does not offer (3440x1440, 2560x1080, ...), set
+  monitor, 5120x1440 gives a native frame with a sharp HUD. The **Aspect ratio** at Monitor's shape widens the
+  cameras to the frame's shape and keeps the HUD and movies in the middle 16:9. Lazarus's default is the game's own 16:9,
+  with black bars where the screen's shape differs (above and below on 16:10, such as the Legion Go S's or the Steam Deck's);
+  options saved before options_version 7 move to it too, and from then on the row's choice is kept. For a size the menu does not offer (3440x1440, 2560x1080, ...), set
   `output_res=<width>x<height>` in `hookshot_options.ini`: each side a multiple of 8, at least 640x360, at most 5120x2880's
   pixels, and between 5:4 and 48:9 in shape; anything else uses the game's 2048x1152. The menu then offers it as its own
   choice. With the **Aspect ratio** at Monitor's shape, a picture wider than 16:9 is kept to 5120x2160's pixels, so above

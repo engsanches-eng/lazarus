@@ -845,7 +845,7 @@ Row rows[] = {
     {TAB_GRAPHICS, "Window scaling filter", &opts.upscale, 0, 2, 1, tx_filter,
      "How the finished picture is scaled to the window, when its size differs from the Output resolution.", hn_filter},
     {TAB_GRAPHICS, "Aspect ratio", &opts.ultrawide, 0, 1, 1, tx_ultrawide,
-     "The picture's shape: your monitor's (the default: wider on an ultrawide, narrower on 4:3 or 16:10), or the game's 16:9. "
+     "The picture's shape: the game's 16:9 (the default, black bars where the screen differs), or your monitor's (wider on an ultrawide, narrower on 4:3 or 16:10). "
      "Applies after a restart.", hn_ultrawide, true, true},
     {TAB_GRAPHICS, "Ultrawide menus", &opts.wide_menus, 0, 2, 1, tx_wide_menus,
      "With the Aspect ratio at the monitor's shape: the pause, item and map menus, and what shows beside them. Loading "
@@ -1511,7 +1511,7 @@ void save() {
         // host/nn_hid.c binds_load; 4: Descriptor reuse on by default, see menu_init and vk_draw.cpp desc_slotgen_on; 5: the
         // Menu shortcut "Insert, F1 or Esc" by default, see menu_init; 6: the Aspect ratio's 16:9 from before moves on a
         // screen narrower than 16:9, see menu_init and host/hos_wide_size.h)
-        fprintf(f, "options_version=6\n");
+        fprintf(f, "options_version=7\n");
         fputs(others.c_str(), f);
         if (!can_bind()) fputs(kept.c_str(), f);
         for (int i = 0; i < HOS_KEY_N && can_bind(); i++) {   // (the stick's and camera's rows, HOS_KEY_MOVE_*/CAM_*, have no pad_ line; the ocarina note rows do)
@@ -3697,10 +3697,10 @@ void menu_init() {
         // 16:9 there. On Linux too, where the menu has no screen size of its own. Not with HOS_ASPECT, a debugging switch
         // the host takes instead of the file: the shape it started with is then the switch's, not a move, and the next save
         // would keep a choice the player never made)
-        if (version < 6 && opts.ultrawide == 0 && !getenv("HOS_ASPECT") && host && host->aspect_ratio) {
-            const float started = host->aspect_ratio();
-            if (started > 1.0f && started < 16.0f / 9.0f * 0.99f) opts.ultrawide = 1;
-        }
+        // (lazarus) from options_version 7 the game's 16:9 is the default, with black bars: a file from before wrote the
+        // monitor's shape, the default then, whether chosen or not, and moves to 16:9, as host/hos_wide_size.h
+        // hos_aspect_on starts the game with it. Not with HOS_ASPECT, the host's debugging switch
+        if (version < 7 && !getenv("HOS_ASPECT")) opts.ultrawide = 0;
     }
     first_start = !has_options;
     // An opt-in profile for 4 GB cards: keep existing options authoritative, but make a first run usable on

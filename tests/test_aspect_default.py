@@ -1,4 +1,5 @@
-"""The Aspect ratio's default for options saved before it (host/hos_wide_size.h hos_aspect_on), game-free.
+"""(lazarus) The Aspect ratio's default: the game's own 16:9, black bars where the screen differs (host/hos_wide_size.h
+hos_aspect_on), game-free. The text below is the original Hookshot rule, which Lazarus replaced at options_version 7.
 
 An options file from before options_version 6 wrote ultrawide=0, the 16:9 that was the default then, whether chosen or not.
 On a screen narrower than 16:9 (16:10, the Steam Deck's 1280x800, 4:3) that moves to the monitor's shape, where 16:9 only adds
@@ -27,27 +28,19 @@ FIXTURE = r'''
 #include "host/hos_wide_size.h"
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "FAIL:%d %s\n", __LINE__, #x); exit(1); } } while (0)
 int main(void) {
-    /* no ultrawide= line: the monitor's shape, on any screen */
-    CHECK(hos_aspect_on(-1, 0, 1920, 1080) == 1 && hos_aspect_on(-1, 5, 3440, 1440) == 1 && hos_aspect_on(-1, 4, 0, 0) == 1);
-    /* the monitor's shape saved: kept */
-    CHECK(hos_aspect_on(1, 4, 1280, 800) == 1 && hos_aspect_on(1, 5, 3440, 1440) == 1);
-    /* an older file's 16:9 (no options_version, or 2 to 5) */
-    for (int v = 0; v <= 5; v++) {
-        CHECK(hos_aspect_on(0, v, 1280, 800) == 1);    /* the Steam Deck, 16:10 */
-        CHECK(hos_aspect_on(0, v, 1920, 1200) == 1);   /* 16:10 */
-        CHECK(hos_aspect_on(0, v, 2560, 1600) == 1);   /* 16:10 */
-        CHECK(hos_aspect_on(0, v, 1024, 768) == 1);    /* 4:3 */
-        CHECK(hos_aspect_on(0, v, 1280, 1024) == 1);   /* 5:4 */
-        CHECK(hos_aspect_on(0, v, 1920, 1080) == 0);   /* 16:9: nothing to move */
-        CHECK(hos_aspect_on(0, v, 1366, 768) == 0);    /* 16:9 within 1%, as host/hos_main.c takes it */
-        CHECK(hos_aspect_on(0, v, 3440, 1440) == 0);   /* an ultrawide keeps its 16:9 */
-        CHECK(hos_aspect_on(0, v, 5120, 1440) == 0);
-        CHECK(hos_aspect_on(0, v, 1080, 1920) == 0);   /* taller than wide: the game's own picture either way */
-        CHECK(hos_aspect_on(0, v, 0, 0) == 0);         /* no screen size */
+    /* no ultrawide= line: the game's 16:9, on any screen (black bars where the screen's shape differs) */
+    CHECK(hos_aspect_on(-1, 0, 1920, 1080) == 0 && hos_aspect_on(-1, 7, 3440, 1440) == 0 && hos_aspect_on(-1, 4, 0, 0) == 0);
+    /* a file from before options_version 7: the monitor's shape was the default then, so it moves to 16:9 */
+    for (int v = 0; v <= 6; v++) {
+        CHECK(hos_aspect_on(1, v, 1920, 1200) == 0);   /* 16:10, the Legion Go S */
+        CHECK(hos_aspect_on(1, v, 1280, 800) == 0);    /* the Steam Deck */
+        CHECK(hos_aspect_on(1, v, 3440, 1440) == 0);
+        CHECK(hos_aspect_on(0, v, 1920, 1200) == 0);
     }
-    /* a file saved from version 6 on: its 16:9 was chosen */
-    CHECK(hos_aspect_on(0, 6, 1280, 800) == 0 && hos_aspect_on(0, 7, 1024, 768) == 0);
-    puts("PASS: an older file's 16:9 moves to the monitor's shape on screens narrower than 16:9 only");
+    /* from version 7 on, the row's choice is kept */
+    CHECK(hos_aspect_on(1, 7, 1920, 1200) == 1 && hos_aspect_on(1, 8, 3440, 1440) == 1);
+    CHECK(hos_aspect_on(0, 7, 1920, 1200) == 0);
+    puts("PASS: the game's 16:9 by default; a choice saved from options_version 7 is kept");
     return 0;
 }
 '''
@@ -76,14 +69,11 @@ def main():
     menu = (ROOT / "gpu" / "vk" / "vk_menu.cpp").read_text(encoding="utf-8")
     init = menu[menu.index("void menu_init() {"):]
     init = init[:init.index("    restart_init();")]
-    need(init, r"if \(version < 6 && opts\.ultrawide == 0 && !getenv\(\"HOS_ASPECT\"\) && host && host->aspect_ratio\) \{\s*"
-               r"const float started = host->aspect_ratio\(\);\s*"
-               r"if \(started > 1\.0f && started < 16\.0f / 9\.0f \* 0\.99f\) opts\.ultrawide = 1;",
-         "menu_init does not follow the host's start for an older file's 16:9 (before restart_init), "
-         "or follows it under HOS_ASPECT")
+    need(init, r"if \(version < 7 && !getenv\(\"HOS_ASPECT\"\)\) opts\.ultrawide = 0;",
+         "menu_init does not move an older file's Aspect ratio to the game's 16:9 as the host starts it (before restart_init)")
     saved = re.search(r'fprintf\(f, "options_version=(\d+)\\n"\);', menu[menu.index("void save() {"):])
-    if not saved or int(saved.group(1)) < 6:
-        raise SystemExit("FAIL: save() writes an options_version below 6: a 16:9 chosen now would move at the next start")
+    if not saved or int(saved.group(1)) < 7:
+        raise SystemExit("FAIL: save() writes an options_version below 7: the monitor's shape chosen now would move at the next start")
     print("aspect default: all checks passed")
 
 

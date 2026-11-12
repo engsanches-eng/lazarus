@@ -47,10 +47,11 @@ static inline double hos_wide_max_px(void) {
    host/hos_main.c starts the game with it; the Insert menu's row follows what the host started with (gpu/vk/vk_menu.cpp
    menu_init) */
 static inline int hos_aspect_on(int saved, int version, int screen_w, int screen_h) {
-    if (saved < 0) return 1;
-    if (saved == 0 && version < 6 && screen_w > screen_h && screen_h > 0 &&
-        (double)screen_w / screen_h < 16.0 / 9.0 * 0.99)
-        return 1;
+    /* (lazarus) the game's own 16:9 by default, with black bars where the screen's shape differs (16:10 on the Legion Go S
+       and the Steam Deck: above and below). A file from before options_version 7 wrote the monitor's shape, the default
+       then, whether chosen or not: it moves to 16:9 too. From 7 on the row's choice is kept */
+    (void)screen_w, (void)screen_h;
+    if (saved < 0 || version < 7) return 0;
     return saved != 0;
 }
 
