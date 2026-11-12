@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.join(ROOT, "third_party", "a64-kit", "tools"))
 import linux_update  # noqa: E402  (the release check and the part download)
 import make_game  # noqa: E402  (LANGUAGES, BUILD_ID)
 import pipeline_share  # noqa: E402  (Save my pipeline list: the zip for the "Submit your pipelines" issue)
+import steam_shortcut  # noqa: E402  ((lazarus) the game in Steam's library, for Gaming Mode)
 import toolchain  # noqa: E402  (default_jobs: RX_JOBS)
 
 CONFIG = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "hookshot", "builder.ini")
@@ -1116,6 +1117,8 @@ class Builder(tk.Tk):
                    command=lambda: self.play_and_close(folder)).pack(side="right", padx=px(4))
         ttk.Button(f, text="Open the game folder", style="Link.TButton", cursor="hand2",
                    command=lambda: subprocess.Popen(["xdg-open", folder])).pack(pady=(px(22), 0))
+        ttk.Button(f, text="Add to Steam (Gaming Mode)", style="Link.TButton", cursor="hand2",
+                   command=lambda: self.add_to_steam(folder, self.launch_status)).pack(pady=(px(4), 0))
         self.share_row(f, folder).pack(pady=(px(4), 0))
         self.lookup_latest()
 
@@ -1449,6 +1452,14 @@ class Builder(tk.Tk):
                 add_to_menu(folder)
             except (OSError, ValueError):   # (no menu entry; the game is built)
                 pass
+            # (lazarus) and in Steam's library as a non-Steam game, for Gaming Mode, when Steam is closed; else the button below
+            if steam_shortcut.shortcut_files() and not steam_shortcut.steam_running():
+                if steam_shortcut.add(folder)[0]:
+                    text += " · in Steam's library (Non-Steam)"
+                    self.stage_text.set(text)
+            elif steam_shortcut.shortcut_files():
+                ttk.Button(self.buttons, text="Add to Steam", cursor="hand2",
+                           command=lambda: self.add_to_steam(folder, self.stage_text)).pack(side="right", padx=self.px(4))
             ttk.Button(self.buttons, text="Play", style="Go.TButton", image=self.images["play"], compound="left", cursor="hand2",
                        command=lambda: self.play_and_close(folder)).pack(side="right", padx=self.px(4))
             ttk.Button(self.buttons, text="Open folder", cursor="hand2",
@@ -1470,6 +1481,20 @@ class Builder(tk.Tk):
             self.stop_update.set()
             self.stage_text.set("Stopping the update")
 
+    def add_to_steam(self, folder, status):
+        """(lazarus) the game in Steam's library (builder/linux/steam_shortcut.py). Steam must be closed to keep it: asked first"""
+        if steam_shortcut.steam_running():
+            if not messagebox.askyesno("Lazarus", "Steam is running. Close Steam to add the game to its library?\n\n"
+                                       "On SteamOS, going back to Gaming Mode starts it again, with the game under Non-Steam."):
+                return
+            status.set("Closing Steam...")
+            self.update_idletasks()
+            if not steam_shortcut.close_steam():
+                status.set("Steam did not close. Close it yourself, then press Add to Steam again.")
+                return
+        ok, message = steam_shortcut.add(folder)
+        status.set(message)
+
     def play_and_close(self, folder):
         play(folder)
         self.destroy()
@@ -1483,6 +1508,9 @@ class Builder(tk.Tk):
 
 
 def main():
+    if "--add-to-steam" in sys.argv[1:]:   # (lazarus) the game in Steam's library, without the window
+        folder = _arg("--add-to-steam") or load_config().get("out")
+        sys.exit(steam_shortcut.main([sys.argv[0], folder or ""]))
     if "--play" in sys.argv[1:]:
         folder = _arg("--play") or load_config().get("out")
         if game_ready(folder):

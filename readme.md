@@ -1,3 +1,8 @@
+> **Lazarus 2.2** (fork for handhelds: Legion Go S, SteamOS). Starts fullscreen. After a build, Hookshot Builder adds the
+> game to Steam's library as a non-Steam game, **Lazarus**, which starts from Gaming Mode with the handheld's own controls
+> (Steam must be closed for that: the builder offers to close it; going back to Gaming Mode starts it again). From a
+> terminal: `Hookshot-*.AppImage --add-to-steam [game folder]`.
+
 <h1 align="center">
   <br>
   <a>
@@ -338,7 +343,7 @@ HDR, Detail, and GPU and memory (last: the rows to change when something is wron
 | | Game frame rate cap | 60, 90, 120, 144, 165, 240 FPS, Uncapped (after a restart) | 60 FPS |
 | | NVIDIA Reflex | Off, On, On + Boost (shown only on NVIDIA GPUs with `VK_NV_low_latency2`) | Off |
 | | AMD Anti-Lag 2 | Off, On (shown only on AMD GPUs with `VK_AMD_anti_lag`) | Off |
-| | Fullscreen | Off, On (the same as <kbd>F11</kbd>) | Off |
+| | Fullscreen | Off, On (the same as <kbd>F11</kbd>) | On |
 | | V-Sync | Auto, On, Off | Auto |
 | | Window scaling filter | Off, Catmull-Rom, Lanczos | Off |
 | | Aspect ratio | 16:9, Monitor's shape: wider than 16:9, or narrower down to 5:4 (after a restart) | Monitor's shape |
