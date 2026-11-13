@@ -59,6 +59,31 @@ class SteamShortcutTests(unittest.TestCase):
         self.assertIn('HOS_FULLSCREEN="${HOS_FULLSCREEN:-1}"', text)
         self.assertIn("exec ./bin/hookshot", text)
 
+    def test_pictures_in_the_grid_and_an_old_entry_renamed(self):
+        old = {"AppName": "Lazarus", "Exe": '"%s"' % (self.game / steam_shortcut.SCRIPT), "tags": {}}
+        self.vdf.write_bytes(steam_shortcut.dumps({"shortcuts": {"0": old}}))
+        self.assertFalse(steam_shortcut.in_library(home="/nonexistent"))
+        self.assertTrue(self.add()[0])
+        entries = self.entries()
+        self.assertEqual(len(entries), 1)   # (the Lazarus entry renamed, not a second one)
+        ours = entries["0"]
+        self.assertEqual(ours["AppName"], "The Legend of Zelda: Ocarina of Time")
+        unsigned = ours["appid"] & 0xFFFFFFFF
+        grid = self.vdf.parent / "grid"
+        for name in ("%dp.png", "%d.png", "%d_hero.png", "%d_logo.png", "%d_icon.png"):
+            self.assertTrue((grid / (name % unsigned)).is_file(), name)
+        self.assertEqual(ours["icon"], str(grid / ("%d_icon.png" % unsigned)))
+        self.assertTrue(steam_shortcut.in_library(home=str(self.home)))
+
+    def test_the_pictures_are_steams_sizes(self):
+        from PIL import Image
+        sizes = {"capsule.png": (600, 900), "wide.png": (920, 430), "hero.png": (1920, 620), "icon.png": (512, 512)}
+        for name, size in sizes.items():
+            with Image.open(os.path.join(steam_shortcut.ART, name)) as im:
+                self.assertEqual(im.size, size, name)
+        with Image.open(os.path.join(steam_shortcut.ART, "logo.png")) as im:
+            self.assertEqual(im.mode, "RGBA")   # (drawn over the hero: transparent around the lettering)
+
     def test_nothing_written_while_steam_runs(self):
         ok, message = self.add(running=True)
         self.assertFalse(ok)

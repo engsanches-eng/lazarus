@@ -17,10 +17,12 @@
 
 Lazarus is Hookshot tuned to be played on a SteamOS handheld, from Gaming Mode, with the handheld's own controls:
 
-- **Gaming Mode entry.** After a build, the builder adds the game to Steam's library as the non-Steam game **Lazarus**.
-  It starts the game itself, with no launcher window, so Steam Input passes on the handheld's built-in controls. Steam
-  must be closed while the entry is written: the builder offers to close it, and going back to Gaming Mode starts it
-  again. From a terminal: `Lazarus-*.AppImage --add-to-steam [game folder]`.
+- **Straight into Steam's library.** When the build ends, the installer adds the game to Steam's library as the non-Steam
+  game **The Legend of Zelda: Ocarina of Time**, with its own pictures (capsule, wide capsule, hero, logo and icon), and
+  its only button closes the installer: the game is played from Gaming Mode. Steam is closed while the entry is written,
+  and going back to Gaming Mode starts it again. The entry starts the game itself, with no launcher window, so Steam
+  Input passes on the handheld's built-in controls. Opened again, the installer says the game is already in Steam. From a
+  terminal: `Lazarus-*.AppImage --add-to-steam [game folder]`.
 - **Fullscreen** by default.
 - **The game's own 16:9 picture**, never stretched: black bars above and below on the 16:10 screens of the Steam Deck
   and the Legion Go S. Monitor's shape stays in the Insert menu for those who want it.
@@ -31,7 +33,8 @@ Lazarus is Hookshot tuned to be played on a SteamOS handheld, from Gaming Mode, 
 **Tested on:** Lenovo Legion Go S (SteamOS). The Steam Deck runs the same SteamOS and the same Gaming Mode; reports from
 Steam Deck players are welcome in the issues.
 
-As with Hookshot, you need your own copy of the game: the game is built on your own device from it, and nothing of the
+Lazarus is not affiliated with or endorsed by Nintendo. The library pictures in `builder/linux/steam-art` are original
+art made for Lazarus, with no characters, logos or artwork from the game. As with Hookshot, you need your own copy of the game: the game is built on your own device from it, and nothing of the
 game is in this repository or its releases. The rest of this page is Hookshot's documentation, which applies to Lazarus
 too.
 

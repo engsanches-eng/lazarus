@@ -1,4 +1,5 @@
-"""(lazarus) The game as a non-Steam game in Steam's library, so it starts from Gaming Mode (SteamOS, Legion Go S, Steam Deck).
+"""(lazarus) The game as a non-Steam game in Steam's library, so it starts from Gaming Mode (SteamOS, Legion Go S, Steam Deck),
+named The Legend of Zelda: Ocarina of Time, with its pictures (steam-art: original art made for Lazarus) in Steam's grid folder.
 
 Steam keeps its non-Steam games in userdata/<account>/config/shortcuts.vdf, a binary VDF file, one per account that has
 signed in on this PC. Each gets an entry (or has its entry brought up to date: the one whose Exe is ours) that starts
@@ -20,9 +21,13 @@ import subprocess
 import sys
 import time
 
-NAME = "Lazarus"
+NAME = "The Legend of Zelda: Ocarina of Time"   # (the entry's name in Steam's library; an older entry named Lazarus is renamed)
 SCRIPT = "steam-play"
 TAGS = ("Lazarus",)
+# (the library's pictures, original art made for Lazarus: Steam's grid folder names them after the entry's id)
+ART = os.path.join(os.path.dirname(os.path.abspath(__file__)), "steam-art")
+ART_FILES = (("capsule.png", "%dp.png"), ("wide.png", "%d.png"), ("hero.png", "%d_hero.png"), ("logo.png", "%d_logo.png"),
+             ("icon.png", "%d_icon.png"))
 
 # (the script Steam starts: the game from its folder, as hookshot-launch starts it, without the AppImage's or Steam's
 # library path, so it loads its own SDL; fullscreen unless HOS_FULLSCREEN is set in the shortcut's launch options)
@@ -197,6 +202,53 @@ def entry(folder, script, icon, old=None):
     return e
 
 
+def write_art(grid, unsigned):
+    """the library's pictures for the entry whose id is unsigned, in Steam's grid folder: the icon's path, or "" when the
+    pictures are not beside this file (a source checkout without them). A picture that cannot be written is left out"""
+    if not os.path.isdir(ART):
+        return ""
+    try:
+        os.makedirs(grid, exist_ok=True)
+    except OSError:
+        return ""
+    icon = ""
+    for src, name in ART_FILES:
+        source, target = os.path.join(ART, src), os.path.join(grid, name % unsigned)
+        if not os.path.isfile(source):
+            continue
+        try:
+            shutil.copyfile(source, target)
+        except OSError:
+            continue
+        if src == "icon.png":
+            icon = target
+    return icon
+
+
+def in_library(home=None):
+    """True when every Steam account on this PC has the entry (its Exe is a steam-play script of ours)"""
+    files = shortcut_files(home)
+    if not files:
+        return False
+    for path in files:
+        try:
+            with open(path, "rb") as f:
+                shortcuts = loads(f.read()).get("shortcuts", {})
+        except (OSError, VdfError):
+            return False
+        if not any(isinstance(v, dict) and str(v.get("Exe", "")).rstrip('"').endswith("/" + SCRIPT)
+                   for v in shortcuts.values()):
+            return False
+    return True
+
+
+def add_closing_steam(folder, home=None):
+    """add(), closing Steam first when it runs (on SteamOS, Gaming Mode starts it again). Returns (ok, message)"""
+    if steam_running() and not close_steam():
+        return False, "Steam did not close. Close it yourself, then open this installer again."
+    return add(folder, home=home)
+
+
 def add_to_file(path, folder, script, icon):
     """our entry in one shortcuts.vdf (added, or the old one brought up to date): "added" or "updated" """
     data = b""
@@ -212,7 +264,9 @@ def add_to_file(path, folder, script, icon):
     what = "updated" if key is not None else "added"
     if key is None:
         key = str(max([int(k) for k in shortcuts if str(k).isdigit()] + [-1]) + 1)
-    shortcuts[key] = entry(folder, script, icon, shortcuts.get(key))
+    unsigned = app_id(exe, NAME) & 0xFFFFFFFF
+    art_icon = write_art(os.path.join(os.path.dirname(path), "grid"), unsigned)
+    shortcuts[key] = entry(folder, script, art_icon or icon, shortcuts.get(key))
     root["shortcuts"] = {str(i): v for i, v in enumerate(shortcuts[k] for k in sorted(shortcuts, key=lambda k: int(k) if str(k).isdigit() else 1 << 30))}
     os.makedirs(os.path.dirname(path), exist_ok=True)
     if os.path.exists(path):
@@ -245,18 +299,14 @@ def add(folder, home=None, running=steam_running):
             done.append(add_to_file(path, folder, script, icon))
         except (OSError, VdfError) as e:
             return False, "Steam's library file %s could not be changed: %s" % (path, e)
-    return True, ("%s is in Steam's library as a non-Steam game (%d account%s). Go back to Gaming Mode (or start Steam): "
-                  "it is under Non-Steam, and starts fullscreen with the handheld's controls." %
-                  (NAME, len(files), "" if len(files) == 1 else "s"))
+    return True, ("Game added to Steam (%s, under Non-Steam). Go back to Gaming Mode to play." % NAME)
 
 
 def main(argv):
     if len(argv) != 2:
         print(__doc__.strip().splitlines()[-1].strip())
         return 2
-    ok, message = add(argv[1])
-    if not ok and "Steam is running" in message and close_steam():
-        ok, message = add(argv[1])
+    ok, message = add_closing_steam(argv[1])
     print(message)
     return 0 if ok else 1
 
