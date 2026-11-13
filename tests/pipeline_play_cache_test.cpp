@@ -72,17 +72,25 @@ std::set<uint64_t> parse(const uint8_t* p, size_t n) {
     return keys;
 }
 /// (vk_draw.cpp's own checks the header: here a file not starting "FAKE" is another driver's)
-std::vector<uint8_t> pcache_file_read(const std::string& path) {
-    std::vector<uint8_t> data;
+static bool fail_reads = false, fail_cache_create = false;
+struct ReadPart : std::vector<uint8_t> {
+    bool incompatible = false;
+    bool rejected() const { return incompatible; }
+    bool reset() { clear(); incompatible=false; return true; }
+};
+ReadPart pcache_file_read(const std::string& path) {
+    ReadPart data;
+    if (fail_reads) return data;
     if (FILE* f = std::fopen(path.c_str(), "rb")) {
         uint8_t buf[4096];
         for (size_t n; (n = std::fread(buf, 1, sizeof buf, f)) > 0;) data.insert(data.end(), buf, buf + n);
         std::fclose(f);
     }
-    if (data.size() < 4 || std::memcmp(data.data(), "FAKE", 4)) data.clear();
+    if (data.size() < 4 || std::memcmp(data.data(), "FAKE", 4)) { data.clear(); data.incompatible = true; }
     return data;
 }
 VkResult vkCreatePipelineCache(int, const VkPipelineCacheCreateInfo* ci, const void*, VkPipelineCache* out) {
+    if (fail_cache_create) return VK_ERROR_UNKNOWN;
     auto* c = new FakeCache;
     if (ci->initialDataSize) c->keys = parse((const uint8_t*)ci->pInitialData, ci->initialDataSize);
     ++creates;
@@ -167,9 +175,30 @@ VkResult fake_create(VkPipelineCache c, const FakeCI* ci, VkPipeline* pl) {
     return *pl = &the_pipeline, VK_SUCCESS;
 }
 
-#define MoveFileExA move_into_place
+#ifdef _WIN32
+static BOOL mapped_move(LPCWSTR from, LPCWSTR to, DWORD flags) {
+    if (fail_moves.load() > 0) { --fail_moves; ++failed_moves; return FALSE; }
+    return MoveFileExW(from, to, flags);
+}
+#define MoveFileExW mapped_move
+#else
+static int mapped_move(const char* from, const char* to) {
+    if (fail_moves.load() > 0) { --fail_moves; ++failed_moves; return -1; }
+    return rename(from, to);
+}
+#define rename mapped_move
+#endif
+#include "pipeline_cache_file.h"
+using mkwvk::PipelineCacheFile;
+#ifdef _WIN32
+#undef MoveFileExW
+#else
+#undef rename
+#endif
+// (the census's counters, gpu/vk/vk_programs.h: counted, not checked here)
+struct { std::atomic<int64_t> play_from_driver{0}, play_from_start{0}, play_compiled{0}; } census;
+thread_local struct { uint8_t made_how = 0; } use_counters;
 #include "pipeline_play_cache.inc"
-#undef MoveFileExA
 
 VkResult make(uint64_t key, unsigned flags = 0) {
     FakeCI ci;
@@ -272,7 +301,8 @@ int run(const std::string& name) {
         CHECK(!exists(play_path(2)));
         CHECK(make(12) == VK_SUCCESS);
         play_cache_save();
-        CHECK(file_keys(play_path(2)) == std::set<uint64_t>{12} && file_keys(play_path(1)) == (std::set<uint64_t>{10, 11}));
+        // (issue 2579: one file a session, written again with each save's generation)
+        CHECK(file_keys(play_path(1)) == (std::set<uint64_t>{10, 11, 12}) && !exists(play_path(2)));
         CHECK(keys_of(pcache) == std::set<uint64_t>{1});
     } else if (name == "retry") {
         pcache = cache_of({});
@@ -280,11 +310,19 @@ int run(const std::string& name) {
         CHECK(make(20) == VK_SUCCESS);
         fail_moves = 1;
         play_cache_save();   // (not in place: kept)
-        CHECK(failed_moves == 1 && !exists(play_path(1)) && play_seq == 0 && destroys == 0);
+        CHECK(failed_moves == 1 && !exists(play_path(1)) && play_seq == 0 && destroys == 1);   // (kept in the session's cache)
         CHECK(make(21) == VK_SUCCESS);
-        play_cache_save();   // (the one kept first, then this one's)
-        CHECK(file_keys(play_path(1)) == std::set<uint64_t>{20} && file_keys(play_path(2)) == std::set<uint64_t>{21});
-        CHECK(destroys == 2 && play_seq == 2);
+        play_cache_save();   // (the one kept and this one's, in the session's one file)
+        CHECK(file_keys(play_path(1)) == (std::set<uint64_t>{20, 21}) && !exists(play_path(2)));
+        CHECK(destroys == 2 && play_seq == 1);
+        fail_moves = 1;
+        play_cache_save();   // (nothing new: nothing written)
+        CHECK(failed_moves == 1);
+        CHECK(make(22) == VK_SUCCESS);
+        play_cache_save();   // (a failed write of the session's file is tried again at the next save, with nothing new)
+        CHECK(failed_moves == 2 && file_keys(play_path(1)) == (std::set<uint64_t>{20, 21}));
+        play_cache_save();
+        CHECK(file_keys(play_path(1)) == (std::set<uint64_t>{20, 21, 22}));
     } else if (name == "users") {
         pcache = cache_of({});
         play_cache_begin();
@@ -306,7 +344,18 @@ int run(const std::string& name) {
         saver.join();
         CHECK(file_keys(play_path(1)) == (std::set<uint64_t>{29, 30}));   // (the compile under way in its generation's file)
         play_cache_save();
-        CHECK(file_keys(play_path(2)) == std::set<uint64_t>{31});
+        CHECK(file_keys(play_path(1)) == (std::set<uint64_t>{29, 30, 31}) && !exists(play_path(2)));
+    } else if (name == "merge-read-failed" || name == "merge-create-failed") {
+        pcache = cache_of({1});
+        write_file(play_path(1), "FAKE", {40});
+        fail_reads = name == "merge-read-failed";
+        fail_cache_create = name == "merge-create-failed";
+        CHECK(play_files_merge() == 0);
+        CHECK(exists(play_path(1)) == (name == "merge-read-failed"));
+        fail_reads = false; fail_cache_create = false;
+        if(name == "merge-create-failed")write_file(play_path(1), "FAKE", {40});
+        CHECK(file_keys(play_path(1)) == std::set<uint64_t>{40});
+        CHECK(play_files_merge() == 1 && has(pcache, 40));
     } else if (name == "merge") {
         pcache = cache_of({1});
         write_file(at("mkw_vk_pipelines_play_3.bin"), "FAKE", {40});
@@ -318,17 +367,19 @@ int run(const std::string& name) {
         write_file(at("mkw_vk_pipelines_play_1234567890.bin"), "FAKE", {46});
         write_file(pcache_path, "FAKE", {1});
         CHECK(play_files_merge() == 2);
-        CHECK(keys_of(pcache) == (std::set<uint64_t>{1, 40, 41}) && play_seq == 7);
+        CHECK(keys_of(pcache) == (std::set<uint64_t>{1, 40, 41}) && play_seq == 8);
         CHECK(!exists(at("mkw_vk_pipelines_play_5.bin")) && exists(at("mkw_vk_pipelines_play_.bin")));
         CHECK(exists(at("mkw_vk_pipelines_play_x1.bin")) && exists(at("mkw_vk_pipelines_play_9.bin.tmp")));
         CHECK(exists(at("mkw_vk_pipelines_play_1234567890.bin")));
-        CHECK(exists(at("mkw_vk_pipelines_play_3.bin")) && exists(at("mkw_vk_pipelines_play_7.bin")));   // (kept: under 16)
+        // (under 16: put together into one play file, numbered after the highest, in their place: issue 2579)
+        CHECK(!exists(at("mkw_vk_pipelines_play_3.bin")) && !exists(at("mkw_vk_pipelines_play_7.bin")));
+        CHECK(file_keys(play_path(8)) == (std::set<uint64_t>{1, 40, 41}));
         CHECK(file_keys(pcache_path) == std::set<uint64_t>{1});   // (the start's file as it was)
         play_cache_begin();
         CHECK(make(40) == VK_SUCCESS && play_cache.load()->from_start == 1);   // (merged: from the start's cache)
         CHECK(make(47) == VK_SUCCESS);
         play_cache_save();
-        CHECK(file_keys(play_path(8)) == std::set<uint64_t>{47});   // (numbered after the highest read)
+        CHECK(file_keys(play_path(9)) == std::set<uint64_t>{47});   // (numbered after the highest read)
     } else if (name == "compact") {
         pcache = cache_of({1});
         write_file(pcache_path, "FAKE", {1});

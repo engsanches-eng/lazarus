@@ -1,8 +1,8 @@
 """The play caches of gpu/vk/vk_draw.cpp, extracted unmodified, on a model of Vulkan pipeline caches and a driver's own disk cache.
 
 In play every save wrote the whole pipeline cache again (0.5-1.2 GB) for what play had added: NVIDIA copies into the cache a
-pipeline is made with each pipeline it takes from its own disk cache. Now what play makes goes into a cache of its own, one per
-save, written alone to mkw_vk_pipelines_play_<n>.bin, and the next start merges those files.
+pipeline is made with each pipeline it takes from its own disk cache. Now what play makes goes into a cache of its own, one file a
+session written again at each save (mkw_vk_pipelines_play_<n>.bin), and the next start merges those files into one.
 
 Checked: in play the start's cache is left as it was read, one it holds comes from it, one the driver has goes into the generation,
 one nothing has is compiled into the generation; a save writes the generation alone and goes on into a new one; a write that did not
@@ -23,7 +23,7 @@ import tempfile
 RUN_ALL_ARGS = ["--cxx", "{cxx}"]
 
 ROOT = Path(__file__).resolve().parents[1]
-CASES = ["route", "save", "retry", "users", "merge", "compact", "compact-failed", "off", "no-control"]
+CASES = ["route", "save", "retry", "users", "merge", "merge-read-failed", "merge-create-failed", "compact", "compact-failed", "off", "no-control"]
 
 
 def play_block(source):
@@ -44,7 +44,7 @@ def main():
         temp = Path(temp)
         (temp / "pipeline_play_cache.inc").write_text(play_block(a.source.read_text(encoding="utf-8")), encoding="utf-8")
         exe = temp / "check.exe"
-        cmd = [a.cxx, "-std=c++20", "-O1", "-Wall", "-Wextra", "-Werror", "-pthread", "-I" + str(temp),
+        cmd = [a.cxx, "-std=c++20", "-O1", "-Wall", "-Wextra", "-Werror", "-pthread", "-I" + str(temp), "-I" + str(ROOT / "gpu/vk"),
                str(ROOT / "tests/pipeline_play_cache_test.cpp"), "-o", str(exe)]
         if os.name == "nt":
             cmd += ["-D_CRT_SECURE_NO_WARNINGS"]

@@ -2,9 +2,9 @@
 
 The flags are a64-kit's for lifted code (its build.py, cmd_native): -O1, LoopRotate's header copies capped (most of
 the compile time in goto-dense giant functions otherwise), capture tracking past LLVM's 100 uses (the context
-parameter is A64_NOESC), one section per function. The guest model is the 64-bit window (rtgen.py), shadowing the
-vendored rt/, with the loop-header interrupt polls on (A64_POLLING, nx2/poll.py). Incremental: an object is rebuilt
-only when its source or the flags changed.
+parameter is A64_NOESC), one section per function, no lifetime markers. The guest model is the 64-bit window
+(rtgen.py), shadowing the vendored rt/, with the loop-header interrupt polls on (A64_POLLING, nx2/poll.py).
+Incremental: an object is rebuilt only when its source or the flags changed.
 
 hookshot_game.dll = the lifted chunks + a64-kit's tables and runtime + nx2/rt/eden_shim.c (the emulator ABI, mkw_host.h)
 + mkw_info.c (the image base and main's build id, generated here from work/image/image.json). Linking it is also the
@@ -33,6 +33,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -53,6 +54,7 @@ NX2_RT = os.path.join(kit.HERE, "rt")
 HOST = os.path.join(kit.HERE, "..", "host")
 OPUS = os.path.join(kit.HERE, "..", "third_party", "opus")
 ZSTD = os.path.normpath(os.path.join(kit.HERE, "..", "third_party", "zstd", "lib"))
+ZSTD_HOST = ("prompts.c", "hos_zstd.c")   # (the host files that use it: a mod's size table; the game's stream decode)
 OBJ_CACHE = os.path.join(kit.WORK, "objcache")
 # (hookshot) work/hot_order.txt: the functions that run, hottest first (sampled), packed together by the linker; RX_NO_ORDER=1: off
 PGO = os.environ.get("RX_PGO", "")
@@ -130,6 +132,94 @@ def no_throttle(handle=None):
     except (OSError, ValueError, TypeError):
         pass
 
+# (the dev-loop proposal's A4) a link whose inputs are the last one's is not run again. Its key: the command, each object's key
+# (its .o.sha1 stamp; its size and time without one), and the contents of the other files the command names (libraries,
+# resources, the symbol order), kept beside the output as <output>.linkkey with the output's size. A link that fails, or an
+# output of another size, forgets it. 3 s for the exe and less for the DLL on Windows, every build
+def link_inputs(cmd, output):
+    """The files a link reads: the objects of its @response files, and the other existing files it names (not its outputs)"""
+    objs, others = [], []
+    for arg in cmd:
+        if arg.startswith("@") and os.path.isfile(arg[1:]):
+            with open(arg[1:], encoding="utf-8") as f:
+                objs += [line.strip().strip('"') for line in f if line.strip()]
+            others.append(arg[1:])
+            continue
+        # (a file inside an option: -Xlink=/order:@<file>, --symbol-ordering-file=<file>; a whole argument too)
+        m = re.match(r"^(?:-Xlink=)?(?:/\w+:@?|-Wl,|--[\w-]+=)(.+)$", arg)
+        for path in (arg, m.group(1) if m else None):
+            if path and os.path.isfile(path) and os.path.abspath(path) != os.path.abspath(output) and not path.endswith(".map"):
+                others.append(path)
+                break
+    return objs, others
+
+
+def link_key(cmd, output):
+    h = hashlib.sha1("\0".join(cmd).encode(), usedforsecurity=False)
+    # (the compiler and its libraries: a new one compiles every object again to the same keys, and the link must follow it)
+    cc = shutil.which(cmd[0]) or cmd[0]
+    st = os.stat(cc)
+    h.update(("%s %d %d\n" % (cc, st.st_size, st.st_mtime_ns)).encode())
+    with contextlib.suppress(OSError), open(os.path.join(kit.WORK, "system_headers.txt"), "rb") as f:
+        h.update(f.read())
+    objs, others = link_inputs(cmd, output)
+    for obj in objs:
+        stamp = obj + ".sha1"
+        try:
+            with open(stamp) as f:
+                h.update(("%s %s\n" % (obj, f.read())).encode())
+        except OSError:
+            st = os.stat(obj)
+            h.update(("%s %d %d\n" % (obj, st.st_size, st.st_mtime_ns)).encode())
+    for path in others:
+        with open(path, "rb") as f:
+            h.update(path.encode() + b"\0" + hashlib.sha1(f.read(), usedforsecurity=False).digest())
+    return h.hexdigest()
+
+
+def run_link(cmd, output):
+    """subprocess.run(cmd) for a link, or nothing when its inputs are the last successful one's (link_key)"""
+    keyfile = output + ".linkkey"
+    try:
+        key = link_key(cmd, output)
+    except OSError:   # (an input gone: the linker says which)
+        key = None
+    try:
+        with open(keyfile) as f:
+            old = f.read().split()
+    except OSError:
+        old = []
+    if key and os.path.exists(output) and old == [key, str(os.path.getsize(output))]:
+        print("  (%s: its inputs are the last link's, not linked again)" % os.path.basename(output), flush=True)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    with contextlib.suppress(OSError):
+        os.remove(keyfile)
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode == 0 and key and os.path.exists(output):
+        with open(keyfile, "w") as f:
+            f.write("%s %d\n" % (key, os.path.getsize(output)))
+    return r
+
+
+COMPDB = "compile_commands.json"
+
+
+def write_compdb(out, jobs):
+    """(the dev-loop proposal's A8) <build>/compile_commands.json: every compile this build runs, as compile_one runs it, for clangd
+    and clang-tidy (nx2/dev.py compdb puts it at the checkout's top). The lifted code's and the host's commands name the lift's
+    gen/ and rt64/ folders, which are this build's; a failure to write it is no failed build"""
+    entries = [{"directory": os.getcwd(), "file": src, "output": obj, "arguments": [cc] + list(fl) + ["-c", src, "-o", obj]}
+               for cc, src, obj, fl, deps in jobs]
+    tmp = os.path.join(out, COMPDB + ".new")
+    try:
+        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(entries, f, indent=0)
+        os.replace(tmp, os.path.join(out, COMPDB))
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+
+
 def linker(*opts):
     """Linker options, each as an argument of its own after -Xlinker. The ones that name a file (the map, the link order) are in
     the build files folder, which the player chooses (make_game.py --work), and the compiler splits -Wl, (and so
@@ -148,7 +238,7 @@ def HOT_ORDER():
 
 
 HOST_LIBS = ["-lpthread", "-ldl", "-lm"] if LINUX else \
-    ["-lwinhttp", "-luser32", "-lwinmm", "-ladvapi32", "-lole32", "-lshell32", "-lgdi32", "-ldbghelp"]
+    ["-luser32", "-lwinmm", "-ladvapi32", "-lole32", "-lshell32", "-lgdi32", "-ldbghelp"]
 GPU = os.path.join(kit.HERE, "..", "gpu")
 # FFmpeg (libavcodec's VP8/VP9 decoders, swscale) for nn::codec's video decoders (host/nn_video.c): the static build
 # in the Eglantine clone's package cache
@@ -251,26 +341,26 @@ def zstd_jobs(cc, flags, obj_dir, prefix):
                       "decompress/zstd_decompress.c", "decompress/zstd_decompress_block.c")]
 
 
-def cpm_dirs():
+def cpm_dirs(work=None):
     """CPM packages: RX_CPM, packaged tools/cpm, then legacy project caches.
     The packages provide Vulkan and SPIR-V headers, VMA and FFmpeg."""
     eden_ns2 = os.path.dirname(kit.ROOT)
     return [d for d in (os.environ.get("RX_CPM"), os.path.join(kit.ROOT, "cpm"),
-                        os.path.join(kit.WORK, "eg", ".cache", "cpm"),
+                        os.path.join(work if work is not None else kit.WORK, "eg", ".cache", "cpm"),
                         os.path.join(eden_ns2, "mkw-recomp", "work", "eg", ".cache", "cpm"),
                         os.path.join(eden_ns2, "Eglantine", ".cache", "cpm")) if d and os.path.isdir(d)]
 
 
-def cpm_package(name):
+def cpm_package(name, work=None):
     """The newest version of a package in the first CPM cache that has it (cpm_dirs), or None"""
-    for root in cpm_dirs():
+    for root in cpm_dirs(work):
         d = os.path.join(root, name)
         if os.path.isdir(d) and os.listdir(d):
             return os.path.join(d, sorted(os.listdir(d))[-1])
     return None
 
 
-def header_package(cpm_name, probe, env=None):
+def header_package(cpm_name, probe, env=None, work=None):
     """A package root with include/<probe>: CPM first, then env (package root or its include/ folder),
     then common system prefixes (/usr/local, /usr). Distro vulkan-headers / spirv-headers install
     under /usr/include; this is what makes a source build find them without a CPM tree."""
@@ -279,7 +369,7 @@ def header_package(cpm_name, probe, env=None):
     def ok(root):
         return bool(root) and os.path.isfile(os.path.join(root, "include", *parts))
 
-    pkg = cpm_package(cpm_name)
+    pkg = cpm_package(cpm_name, work)
     if ok(pkg):
         return pkg
     if env:
@@ -296,6 +386,20 @@ def header_package(cpm_name, probe, env=None):
         if ok(prefix):
             return prefix
     return None
+
+
+VK_HEADERS = (("Vulkan", "vulkanheaders", "vulkan/vulkan.h", "HOOKSHOT_VULKAN_HEADERS"),
+              ("SPIR-V", "spirv-headers", "spirv/unified1/spirv.h", "HOOKSHOT_SPIRV_HEADERS"),
+              ("VMA", "vulkanmemoryallocator", "vk_mem_alloc.h", "HOOKSHOT_VMA_HEADERS"))
+
+
+def vulkan_headers(work=None):
+    return [header_package(package, probe, env, work) for _, package, probe, env in VK_HEADERS]
+
+
+def prebuilt_renderer():
+    # The AppImage's renderer has no NGX: an SDK build compiles its own instead.
+    return "" if NGX_SDK else os.environ.get("HOOKSHOT_VK_PREBUILT", "")
 
 
 def cache_put(obj, key):
@@ -532,20 +636,38 @@ def dav1d_windows():
         os.path.exists(os.path.join(d, "include", "dav1d", "dav1d.h")) else None
 
 
-def ffmpeg_linux():
+def ffmpeg_linux(missing=None):
     """(linux) FFmpeg's compile and link flags: HOOKSHOT_FFMPEG=<prefix> with static libraries (the AppImage's, with
-    dav1d for OoT's AV1 movies), else the system's through pkg-config; None without either"""
+    dav1d for OoT's AV1 movies), else the system's through pkg-config; None without either.
+    missing, when supplied, collects the prerequisites absent from the selected route."""
     pre = os.environ.get("HOOKSHOT_FFMPEG")
     if pre and os.path.exists(os.path.join(pre, "lib", "libavcodec.a")):
         libs = [os.path.join(pre, "lib", "lib%s.a" % l) for l in FFMPEG_LIBS]
+        if missing is not None:
+            for path in libs + [os.path.join(pre, "include", "lib" + l, l + ".h") for l in FFMPEG_LIBS]:
+                if not os.path.isfile(path):
+                    missing.append("FFmpeg: %s (HOOKSHOT_FFMPEG's selected static prefix)" % path)
         libs += [os.path.join(pre, "lib", "libdav1d.a")] if os.path.exists(os.path.join(pre, "lib", "libdav1d.a")) else []
         return ["-I" + os.path.join(pre, "include")], libs + ["-lm", "-lpthread"]
+    names = ["lib" + l for l in FFMPEG_LIBS]
     try:
-        names = ["lib" + l for l in FFMPEG_LIBS]
         cflags = subprocess.run(["pkg-config", "--cflags"] + names, capture_output=True, text=True, check=True).stdout.split()
         libs = subprocess.run(["pkg-config", "--libs"] + names, capture_output=True, text=True, check=True).stdout.split()
         return cflags, libs
-    except (OSError, subprocess.CalledProcessError):
+    except (OSError, subprocess.CalledProcessError) as e:
+        if missing is not None:
+            absent = []
+            for name in names:
+                try:
+                    r = subprocess.run(["pkg-config", "--exists", name], capture_output=True)
+                    if r.returncode:
+                        absent.append(name)
+                except OSError:
+                    absent = ["pkg-config", *names]
+                    break
+            missing.append("FFmpeg: %s (HOOKSHOT_FFMPEG with lib/libavcodec.a first, else pkg-config --cflags/--libs "
+                           "for %s; install the development libraries or set HOOKSHOT_FFMPEG). %s" %
+                           (", ".join(absent or names), " ".join(names), str(e)))
         return None
 
 
@@ -605,7 +727,9 @@ def flags(gen, rt64, opt, polls):
     return target() + CPU + [
         "-I" + rt64, "-I" + gen, "-I" + os.path.join(kit.KIT, "rt"), "-I" + NX2_RT, "-Wno-everything",
         "-fno-strict-aliasing", "-mcx16", "-" + opt, "-g0", "-mllvm", "-rotation-max-header-size=0",
-        "-ffunction-sections", "-mllvm", "-capture-tracking-max-uses-to-explore=5000"] + \
+        "-ffunction-sections", "-mllvm", "-capture-tracking-max-uses-to-explore=5000",
+        # (a compiler's peak memory ~10% lower on a lifted chunk and on a hot piece, clang 23; the lifted code runs as fast)
+        "-Xclang", "-disable-lifetime-markers"] + \
         (["-DA64_POLLING"] if polls else []) + WRITE_TRACK
 
 
@@ -631,6 +755,10 @@ def flag_text(fl):
             continue
         if f.startswith("--sysroot="):
             f = "--sysroot=<sysroot>"
+        elif f.startswith("-fprofile-instr-use="):
+            # (the play profile's path: its contents are in -DHOOKSHOT_PROFILE_SHA1 beside it. Its path kept two checkouts, or a
+            # build from a checkout other than the work folder's, from sharing the eight hot pieces, ~10-20 minutes to compile)
+            f = "-fprofile-instr-use=<profile>"
         else:
             f = f.replace(kit.ROOT, "<root>")
         kept.append(f)
@@ -647,6 +775,7 @@ def key_of(src, fl, deps):
     """object_key, without reading a source HASHES still knows: the key worked out from it before, for these flags and headers,
     is the same"""
     part = kept_part(fl, deps)
+    USED.setdefault(src, set()).add(part)
     entry, st = known(src)
     if entry is not None and part in entry["keys"]:
         return entry["keys"][part]
@@ -667,6 +796,12 @@ HASH_SCHEME = 1
 RACY_NS = 2 * 10 ** 9
 HASHES = {}   # (source path -> {"stat": [size, mtime_ns, id], "sha1": the content's, "keys": {kept_part: object key}})
 HASHES_AT = [0]   # (when the record read in was written, in ns: entries for files written after it, less RACY_NS, are not trusted)
+# (hckrman101 on #2702) a record is written under the time its build started, before it stat'd and read any source: the save
+# comes after the whole plan, seconds later, and the 2 s rule is about the stat. And it keeps, for each source this build looked
+# at, only the keys this build asked for: a header's edit added a key to every renderer source, and the file only grew. A source
+# this build did not look at (a renderer-only build's lifted C) keeps its record as it was
+HASHES_STARTED = [0]
+USED = {}   # (source path -> the kept_parts key_of was asked for this build; content_sha1's sources with none)
 
 
 def file_stat(src):
@@ -700,6 +835,7 @@ def remember(src, st, content):
 
 def content_sha1(src):
     """A source's content's sha1, from the record when it still describes the file"""
+    USED.setdefault(src, set())
     entry, st = known(src)
     if entry is not None:
         return entry["sha1"]
@@ -707,7 +843,9 @@ def content_sha1(src):
 
 
 def load_hashes(out):
+    HASHES_STARTED[0] = time.time_ns()   # (before any source is stat'd: the time the next record is written under)
     HASHES.clear()
+    USED.clear()
     HASHES_AT[0] = 0
     try:
         with open(os.path.join(out, HASH_CACHE), encoding="utf-8") as f:
@@ -726,8 +864,12 @@ def load_hashes(out):
 
 def save_hashes(out):
     """The record of the sources this build saw, for the next one (written atomically; a failure only costs the next build a read)"""
-    data = {"scheme": HASH_SCHEME, "written_ns": time.time_ns(),
-            "files": {src: e for src, e in sorted(HASHES.items()) if os.path.exists(src)}}
+    def kept(src, e):
+        if src not in USED:
+            return e
+        return dict(e, keys={part: key for part, key in e["keys"].items() if part in USED[src]})
+    data = {"scheme": HASH_SCHEME, "written_ns": HASHES_STARTED[0] or time.time_ns(),
+            "files": {src: kept(src, e) for src, e in sorted(HASHES.items()) if os.path.exists(src)}}
     tmp = os.path.join(out, HASH_CACHE + ".new")
     try:
         with open(tmp, "w", encoding="utf-8", newline="\n") as f:
@@ -1071,15 +1213,15 @@ def main():
     if dav1d:
         host_deps += open(os.path.join(dav1d, "include", "dav1d", "version.h"), "rb").read()
         print("AV1 movies: dav1d (%s)" % dav1d, flush=True)
-    zstd_api = b"".join(open(os.path.join(ZSTD, f), "rb").read() for f in sorted(os.listdir(ZSTD)) if f.endswith(".h"))   # (prompts.c's)
+    zstd_api = b"".join(open(os.path.join(ZSTD, f), "rb").read() for f in sorted(os.listdir(ZSTD)) if f.endswith(".h"))   # (ZSTD_HOST's)
     jobs += [(cc, s, os.path.join(obj_dir, "host_" + os.path.basename(s)[:-2] + ".o"),
               host_fl + ["-I" + os.path.join(OPUS, "include")] +
               (["-I" + os.path.join(FFMPEG, "include")] if FFMPEG else []) +
               (FFMPEG_LX[0] if LINUX and FFMPEG_LX else []) +
               ([stamp_def] if os.path.basename(s) == "hos_main.c" else []) +
-              (["-I" + ZSTD] if os.path.basename(s) == "prompts.c" else []) +
+              (["-I" + ZSTD] if os.path.basename(s) in ZSTD_HOST else []) +
               (dav1d_fl if os.path.basename(s) in ("nn_video.c", "dav1d_av1.c") else []),
-              host_deps + (zstd_api if os.path.basename(s) == "prompts.c" else b"")) for s in host_srcs]
+              host_deps + (zstd_api if os.path.basename(s) in ZSTD_HOST else b"")) for s in host_srcs]
     # libopus 1.5.2 (third_party/opus, from TOTKPort): nn::codec's hardware Opus decoder (host/nn_codec.c)
     # (hookshot: built for the same CPU target as the rest (CPU), so its float code can be vectorized where the target has
     # AVX2: the vendored copy has no x86 intrinsics files of its own)
@@ -1089,7 +1231,8 @@ def main():
         for rel in open(os.path.join(OPUS, "sources.txt")).read().split():
             jobs.append((cc, os.path.join(OPUS, rel), os.path.join(obj_dir, "opus_" + rel.replace("/", "_")[:-2] + ".o"),
                          oflags, b"opus-1.5.2"))
-    # zstd's decoder (as in the Vulkan back end): host/prompts.c reads a mod's resource size table to merge the prompts' into it
+    # zstd's decoder (as in the Vulkan back end): host/prompts.c reads a mod's resource size table to merge the prompts' into it,
+    # host/hos_zstd.c decodes the game's streams with it (HOS_NATIVE_ZSTD)
     if host_srcs:
         jobs += zstd_jobs(cc, target() + CPU + ["-O2", "-g0", "-DNDEBUG", "-Wno-everything", "-DZSTD_DISABLE_ASM",
                                                 "-DZSTD_LEGACY_SUPPORT=0", "-DZSTD_MULTITHREAD=0"], obj_dir, "zstd_")
@@ -1109,11 +1252,8 @@ def main():
             jobs.append((cxx, src, os.path.join(obj_dir, "gpu_" + name + ".o"), gflags, gdeps))
     # the Vulkan back end, a DLL of its own (RX_BACKEND=vulkan): CPM cache, HOOKSHOT_*_HEADERS, or system includes
     vk_jobs = []
-    vk_headers = header_package("vulkanheaders", "vulkan/vulkan.h", "HOOKSHOT_VULKAN_HEADERS")
-    spirv_headers = header_package("spirv-headers", "spirv/unified1/spirv.h", "HOOKSHOT_SPIRV_HEADERS")
-    vma_headers = header_package("vulkanmemoryallocator", "vk_mem_alloc.h", "HOOKSHOT_VMA_HEADERS")
-    # (the AppImage's prebuilt hookshot_vk.so is built without NVIDIA's SDK: a build with HOOKSHOT_NGX_SDK compiles its own)
-    vk_prebuilt = "" if NGX_SDK else os.environ.get("HOOKSHOT_VK_PREBUILT", "")
+    vk_headers, spirv_headers, vma_headers = vulkan_headers()
+    vk_prebuilt = prebuilt_renderer()
     build_vk = a.standalone and not vk_prebuilt and vk_headers and spirv_headers and vma_headers
     if a.standalone and vk_prebuilt:
         print("the Vulkan back end: %s, as built" % vk_prebuilt)
@@ -1244,6 +1384,7 @@ def main():
     global GATE
     GATE = None if os.environ.get("HOOKSHOT_MEM_GATE") == "0" else MemoryGate()
     eta_jobs = GATE.expected(a.jobs) if GATE else a.jobs   # (the countdown with the compilers the memory holds, not --jobs)
+    write_compdb(out, jobs)
     counted, expected, pending = os.environ.get("HOOKSHOT_TIMES"), {}, []
     if counted:
         work_jobs, keys = plan_jobs(jobs)
@@ -1305,11 +1446,10 @@ def main():
         exe = os.path.join(out, EXE)   # (+ hookshot.map: crash offsets -> f_<guest address>)
         t = time.time()
         # (--export-dynamic-symbol: the window's state, which the Vulkan back end's own Win32 calls read by name)
-        r = subprocess.run([cc] + target() + ["-fuse-ld=lld", "-o", exe] + linker("-Map=" + exe + ".map") +
-                           ["-Wl,--gc-sections", "-Wl,--export-dynamic-symbol=hos_posix_*", "@" + rsp] + HOT_ORDER() +
-                           (["-fprofile-instr-generate"] if PGO == "gen" else []) +
-                           (FFMPEG_LX[1] if FFMPEG_LX else []) + HOST_LIBS,
-                           capture_output=True, text=True)
+        r = run_link([cc] + target() + ["-fuse-ld=lld", "-o", exe] + linker("-Map=" + exe + ".map") +
+                     ["-Wl,--gc-sections", "-Wl,--export-dynamic-symbol=hos_posix_*", "@" + rsp] + HOT_ORDER() +
+                     (["-fprofile-instr-generate"] if PGO == "gen" else []) +
+                     (FFMPEG_LX[1] if FFMPEG_LX else []) + HOST_LIBS, exe)
         undefined = sorted({l.strip() for l in (r.stdout + r.stderr).splitlines() if "undefined symbol" in l})
         if r.returncode:
             print("link FAILED (%.0fs), %d undefined symbols" % (time.time() - t, len(undefined)))
@@ -1323,7 +1463,7 @@ def main():
     elif a.standalone and not vk_only:
         exe = os.path.join(out, "hookshot.exe")   # (+ hookshot.map: crash offsets -> f_<guest address>)
         t = time.time()
-        r = subprocess.run([cc] + toolchain.native_target() + toolchain.native_link() +
+        r = run_link([cc] + toolchain.native_target() + toolchain.native_link() +
                            ["-o", exe] + linker("/map:" + exe[:-4] + ".map") + [toolchain.link_opt("/stack:8388608"), "@" + rsp] + HOT_ORDER() + HOST_LIBS +
                            ([toolchain.link_opt("/nodefaultlib:clang_rt.profile.lib")] if PGO == "gen" else []) +
                            ([os.path.join(kit.WORK, "hookshot.res")] if os.path.exists(os.path.join(kit.WORK, "hookshot.res")) else []) +   # (nx2/make_icon.py)
@@ -1334,7 +1474,7 @@ def main():
                             ["-lbcrypt", "-lmfplat", "-lmfuuid", "-lstrmiids", "-lole32"] if FFMPEG else []) +
                            ([os.path.join(dav1d_windows(), "lib", "libdav1d.a")] if dav1d_windows() else []) +
                            (["-lc++", "-lunwind"] if toolchain.mingw() else []),   # (llvm-mingw: the C++ parts' runtime, linked in; MSVC's comes by itself)
-                           capture_output=True, text=True)
+                           exe)
         undefined = sorted({l.strip() for l in (r.stdout + r.stderr).splitlines() if "undefined symbol" in l})
         if r.returncode:
             print("link FAILED (%.0fs), %d undefined symbols" % (time.time() - t, len(undefined)))
@@ -1380,7 +1520,7 @@ def main():
         else:
             link = [cc] + toolchain.native_target() + toolchain.native_link() + \
                 ["-shared", "-o", vdll] + linker("/map:" + vdll[:-4] + ".map") + ["@" + vrsp, "-luser32"] +                 (["-lc++", "-lunwind"] if toolchain.mingw() else []) + ngx_link(NGX_SDK, toolchain.mingw())
-        r = subprocess.run(link, capture_output=True, text=True)
+        r = run_link(link, vdll)
         if r.returncode:
             undefined = sorted({l.strip() for l in (r.stdout + r.stderr).splitlines() if "undefined symbol" in l})
             print("%s link FAILED, %d undefined symbols" % (VK_LIB, len(undefined)))

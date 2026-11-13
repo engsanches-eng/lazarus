@@ -71,14 +71,59 @@ int hos_gpu_guest_ranges(uint64_t (*out)[2], int max);
 /* The soft write watch's marks (rt/a64.h A64_MARK, hos_mark_written) over the GPU-visible ranges, read and cleared:
    the Vulkan back end's own collection (gpu/render's rx_collect_written works only with the WebGPU renderer started).
    One consumer: with Vulkan the WebGPU renderer never runs. */
+static int cmp_range_lo(const void *a, const void *b) {
+    const uint64_t x = ((const uint64_t *)a)[0], y = ((const uint64_t *)b)[0];
+    return x < y ? -1 : x > y;
+}
 static int64_t collect_in(const uint64_t (*ranges)[2], int nranges, uint32_t **pages) {
     size_t n = 0, cap = 4096;
     uint32_t *out = malloc(cap * sizeof *out);
+    /* two changes to the clean-span walk, both measured in Hyrule Field at play (Hyrule Field spin, i9-13900K,
+       paired runs of one binary with HOS_WALK, 2x2): the test in 256-page chunks (8 x 32-byte vector loads, one
+       branch, where the ladder tested 32 pages per load-and-branch: ~25 GB/s of a core), and one pass over the
+       union of the ranges (sorted, cursor) instead of a pass per range: 38.1 us a call -> 31.6, 51 ms/s -> 41 ms/s
+       of a core at 110 fps; fps unchanged (the scene is GPU-bound here: the win is CPU freed for smaller CPUs). */
+    typedef long long v64x4 __attribute__((vector_size(32)));
+    /* the merged GPU ranges (hos_gpu_guest_ranges) arrive sorted; the submit-time list (the renderer's mirrored
+       pools) may not be and may overlap: sort a copy, or the cursor would skip pages the walk owes the GPU. */
+    const uint64_t (*use)[2] = ranges;
+    static uint64_t (*scratch)[2];
+    static int scratch_cap;
+    int sorted = 1;
+    for (int r = 1; r < nranges; r++)
+        if (ranges[r][0] < ranges[r - 1][0]) { sorted = 0; break; }
+    if (!sorted) {
+        if (nranges > scratch_cap) {
+            scratch_cap = nranges + 64;
+            scratch = (uint64_t (*)[2])realloc(scratch, (size_t)scratch_cap * sizeof *scratch);
+        }
+        memcpy(scratch, ranges, (size_t)nranges * sizeof *scratch);
+        qsort(scratch, (size_t)nranges, sizeof *scratch, cmp_range_lo);
+        use = scratch;
+    }
+    uint64_t upto = 0;
     for (int r = 0; r < nranges; r++) {
-        const uint64_t lo = ranges[r][0], hi = ranges[r][1] < hos_guest_size() ? ranges[r][1] : hos_guest_size();
+        const uint64_t lo = use[r][0], hi = use[r][1] < hos_guest_size() ? use[r][1] : hos_guest_size();
         uint64_t p1 = (hi + 4095) >> 12;
         if (p1 > A64_DIRTY_PAGES) p1 = A64_DIRTY_PAGES;
-        for (uint64_t p = lo >> 12; p < p1;) {
+        if (p1 <= upto) continue;
+        for (uint64_t p = lo >> 12 < upto ? upto : lo >> 12; p < p1;) {
+            if (!(p & 255) && p + 256 <= p1) {   /* (256 pages at a time while none is marked) */
+                v64x4 a, b, c, d, e, f, g, h, o;
+                __builtin_memcpy(&a, &a64_dirty[p], 32);
+                __builtin_memcpy(&b, &a64_dirty[p + 32], 32);
+                __builtin_memcpy(&c, &a64_dirty[p + 64], 32);
+                __builtin_memcpy(&d, &a64_dirty[p + 96], 32);
+                __builtin_memcpy(&e, &a64_dirty[p + 128], 32);
+                __builtin_memcpy(&f, &a64_dirty[p + 160], 32);
+                __builtin_memcpy(&g, &a64_dirty[p + 192], 32);
+                __builtin_memcpy(&h, &a64_dirty[p + 224], 32);
+                o = ((a | b) | (c | d)) | ((e | f) | (g | h));
+                if (!((o[0] | o[1]) | (o[2] | o[3]))) {
+                    p += 256;
+                    continue;
+                }
+            }
             if (!(p & 31) && p + 32 <= p1) {   /* (32 pages at a time while none is marked) */
                 uint64_t w[4];
                 memcpy(w, &a64_dirty[p], 32);
@@ -101,6 +146,7 @@ static int64_t collect_in(const uint64_t (*ranges)[2], int nranges, uint32_t **p
             }
             p++;
         }
+        upto = p1;
     }
     *pages = out;
     return (int64_t)n;
@@ -141,6 +187,20 @@ static uint64_t host_guest_alloc(uint64_t size) {
 void hos_watch_guest_writes(const uint8_t *data, uint64_t size);   /* nvn_native.c */
 static void host_watch_guest_writes(uint64_t guest, uint64_t size) { hos_watch_guest_writes(hos_guest_base() + guest, size); }
 static float host_aspect_ratio(void) { return hos_aspect_ratio; }
+#ifndef _WIN32
+int hos_sdl_desktop_size(int *width, int *height);   /* hos_sdl.c */
+#endif
+/* (hookshot) the main screen's size, as host/hos_main.c takes its shape (MkwVkHost.screen_size) */
+static int host_screen_size(int *width, int *height) {
+#ifdef _WIN32
+    const int w = GetSystemMetrics(SM_CXSCREEN), h = GetSystemMetrics(SM_CYSCREEN);
+    if (w <= 0 || h <= 0) return 0;
+    *width = w, *height = h;
+    return 1;
+#else
+    return hos_sdl_desktop_size(width, height);
+#endif
+}
 static float host_wide_menus(uint32_t keep_mask) {   /* (MkwVkHost.wide_menus) */
     extern volatile uint32_t hos_wide_keep_mask;
     extern volatile float hos_wide_margin;
@@ -150,6 +210,7 @@ static float host_wide_menus(uint32_t keep_mask) {   /* (MkwVkHost.wide_menus) *
     hos_wide_keep_mask = forced ? (uint32_t)strtoul(forced, NULL, 16) : keep_mask;
     return hos_wide_margin;
 }
+float hos_wide_cover(void);   /* hos_main.c */
 int hos_mouse_pointer(MkwVkPointer *out);   /* display.c, posix/display_sdl.c */
 int hos_sdl_gyro_status(void);   /* pad_sdl.c */
 extern const char *hos_romfs_dir;   /* nn_fs.c, set by hos_main.c */
@@ -186,7 +247,8 @@ static const MkwVkHost vk_host = {
     hos_gpu_maps_generation, nvn_vmap_generation, hos_reserved_cpus, host_collect_in, host_guest_alloc,
     host_watch_guest_writes, hos_pad_raw, hos_binding, hos_bind, host_aspect_ratio, host_take_key_press,
     hos_mouse_pointer, hos_mic_count, hos_mic_name, hos_mic_select, hos_sdl_gyro_status, hos_log_flush, hos_prompts_face,
-    host_romfs_dir, host_wide_menus, host_slept_ns, host_fps_timing, hos_prompts_live_parts,
+    host_romfs_dir, host_wide_menus, host_slept_ns, host_fps_timing, hos_prompts_live_parts, host_screen_size,
+    hos_wide_cover,
 };
 
 static const MkwVkRenderer *vk;   /* the Vulkan back end, when it was chosen and started */
@@ -261,7 +323,11 @@ static const MkwVkRenderer *load_vulkan(const char *dll) {
     memcpy(slash + 1, dll, strlen(dll) + 1);
     HMODULE m = LoadLibraryA(path);
     if (!m) {
+#ifdef _WIN32
         hos_log("rx: RX_BACKEND=vulkan, but %s did not load (%lu): WebGPU", path, GetLastError());
+#else   /* (why: a missing file, or a symbol it needs that this executable lacks, as one from another build) */
+        hos_log("rx: RX_BACKEND=vulkan, but %s did not load (%s): WebGPU", path, hos_load_error());
+#endif
         return NULL;
     }
     vk_module = m;
@@ -423,6 +489,9 @@ void rx_nvn_texture_created(const nvn_tex *t) {
     if (vk && vk->nvn_texture_created) vk->nvn_texture_created(t);
 }
 void rx_nvn_program_released(const nvn_prog *p) { vk ? vk->nvn_program_released(p) : wgr_nvn_program_released(p); }
+void rx_nvn_program_created(const nvn_prog *p) {
+    if (vk && vk->nvn_program_created) vk->nvn_program_created(p);
+}
 void rx_nvn_read_texels(const nvn_tex *t, unsigned level, unsigned layer0, const NVNcopyRegion *r, uint8_t *dst,
                         size_t row, size_t img) {
     vk ? vk->nvn_read_texels(t, level, layer0, r, dst, row, img) : wgr_nvn_read_texels(t, level, layer0, r, dst, row, img);

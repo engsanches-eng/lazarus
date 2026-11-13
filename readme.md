@@ -69,8 +69,8 @@ Discord: https://discord.gg/rexed
 
 ## Project status
 
-Experimental. Most testing so far has been around the start of the game. Players have reported on many PCs since:
-the table says what works and what does not yet.
+Experimental. Players have reported on many PCs, from Kokiri Forest to the dungeons: the table says what works and
+what does not yet. Open problems are collected in tracking issues, linked below.
 
 | What | Status |
 |---|---|
@@ -82,13 +82,13 @@ the table says what works and what does not yet.
 | Models with missing pieces (doors, fences, parts of trees) | ✅ Fixed where tested, more play needed |
 | Stutter when entering new areas | ⚠️ Still happens the first time you visit a place. The next visits are smooth |
 | Performance | ⚠️ Depends on the PC: some reach a steady 60 fps, others stay below it, more so in Hyrule Field |
-| Hyrule Field, Castle Town, Kakariko and the dungeons | ⚠️ Players got there, with open bugs: striped shadows in Hyrule Field ([#468](https://github.com/NotRexed/Hookshot/issues/468)), some crashes ([#317](https://github.com/NotRexed/Hookshot/issues/317), [#648](https://github.com/NotRexed/Hookshot/issues/648)) |
-| Ultrawide and 4:3 | ⚠️ The 3D keeps its shape, but the HUD is stretched and the picture is softer |
+| Hyrule Field, Castle Town, Kakariko and the dungeons | ⚠️ Players got there, with open bugs: lighting and shadows ([#1004](https://github.com/NotRexed/Hookshot/issues/1004)), crashes and freezes ([#2507](https://github.com/NotRexed/Hookshot/issues/2507)) |
+| Ultrawide and 4:3 | ✅ Works. The Aspect ratio row's default, Monitor's shape, widens the 3D to the screen and keeps the HUD and movies in the middle 16:9 ([#2119](https://github.com/NotRexed/Hookshot/pull/2119)) |
 | NVIDIA cards | ✅ Works. The most tested |
-| AMD cards | ⚠️ Some tested: reports from the RX 6600, RX 7800 XT and RX 7900 XTX. Known issue: the game loses the GPU in the Deku Tree on the RX 6600 ([#708](https://github.com/NotRexed/Hookshot/issues/708), [#614](https://github.com/NotRexed/Hookshot/issues/614)) |
-| Intel cards | ❓ Few reports, many of them black screens or crashes ([#17](https://github.com/NotRexed/Hookshot/issues/17)) |
+| AMD cards | ⚠️ Many tested: reports from the RX 6600, RX 6800 XT, RX 7800 XT, RX 7900 XTX and RX 9070 XT. On Windows, the RX 6000 cards (Navi 21 and 22) draw task and mesh shaders through the compute fallback by default, as the driver lost the GPU with them ([#1747](https://github.com/NotRexed/Hookshot/pull/1747), [#1992](https://github.com/NotRexed/Hookshot/pull/1992), [#2215](https://github.com/NotRexed/Hookshot/pull/2215)). Driver crashes and device lost are still reported ([#996](https://github.com/NotRexed/Hookshot/issues/996)) |
+| Intel cards | ❓ Few reports, many of them black screens or crashes ([#999](https://github.com/NotRexed/Hookshot/issues/999)) |
 | Cards without mesh shaders (such as AMD RX 5000 and older) | ❌ Not supported: parts of the picture are missing. Since v2.0.6 a fallback runs the mesh programs as compute shaders on cards with buffer device addresses ([#640](https://github.com/NotRexed/Hookshot/issues/640)); it leaves out the mesh draws that take their count from a buffer |
-| Linux | ✅ Works with the AppImage. Tested on several distributions (CachyOS, Fedora, Bazzite, SteamOS) and cards, with open problems on some AMD cards ([#604](https://github.com/NotRexed/Hookshot/issues/604), [#528](https://github.com/NotRexed/Hookshot/issues/528)) |
+| Linux | ✅ Works with the AppImage. Tested on several distributions (CachyOS, Fedora, Bazzite, SteamOS) and cards, with open problems on some AMD cards ([#1000](https://github.com/NotRexed/Hookshot/issues/1000)) |
 
 ## Install and play
 
@@ -315,7 +315,8 @@ shows bands or blocks. Off unless set; `RX_VK_ASTC_RGBA8=1` above still wins whe
 ## In-game menu
 
 By default, press <kbd>Insert</kbd>, <kbd>F1</kbd> or <kbd>Esc</kbd> in game. On a controller, press Home or Select and
-Start together; on a DualShock 4 or DualSense, clicking the touchpad does the same as <kbd>F1</kbd>.
+Start together; on a DualShock 4 or DualSense, clicking the touchpad does the same as <kbd>F1</kbd>, unless a row of
+Controls takes the touchpad as its input.
 The same keys close it; with every Menu shortcut, <kbd>Esc</kbd> goes back a page or closes the open menu.
 <kbd>F1</kbd> always works. **Controls → Menu shortcut** can leave <kbd>Insert</kbd> free for another overlay (F1 only).
 With Insert or F1, or with F1 only, <kbd>Esc</kbd> does not open the menu: it only lets the mouse go. Options saved by
@@ -350,33 +351,33 @@ HDR, Detail, and GPU and memory (last: the rows to change when something is wron
 
 | Tab | Option | Choices | Default |
 |---|---|---|---|
-| Graphics | Quality preset | Custom, Minimum (4GB), Low (6GB), Balanced (8GB), High (12GB), Ultra (16GB+) | Custom |
-| | Output resolution | 1920x1080, 2048x1152, 2560x1440, 3840x2160, 5120x1440, 5120x2880 (after a restart) | 2048x1152 |
+| Graphics | Quality preset | Custom, Minimum (4GB), Low (6GB), Balanced (8GB), High (12GB), Ultra (16GB+), Auto (this PC) | Auto (this PC) on a first start; Custom in an options file from before it |
+| | Aspect ratio | The shapes your screen's resolutions have, narrowest first (5:4, 4:3, 16:10, 16:9, 21:9, 32:9, ...), your monitor's own marked "(monitor's)" (after a restart) | 16:9 (Lazarus: the game's own, black bars where the screen differs) |
+| | Output resolution | The Aspect ratio's sizes: your screen's resolutions and the common ones (1440p, 4K, 5K at 16:9; 1920x1200, 2560x1600 at 16:10; 3440x1440 at 21:9; ...), and 2048x1152 (the game's own) at 16:9 (after a restart) | 2048x1152 |
 | | Profile | Docked, Handheld (after a restart) | Docked |
 | | Upscaler | Game's own, NVIDIA DLSS, NVIDIA DLAA (only in builds with NVIDIA's DLSS SDK, below; DLSS and DLAA on RTX GPUs), AMD FSR 3.1 (every build, on GPUs it runs on, below), AMD FSR 4, AMD FSR 4 Native AA (only in builds with FSR 4, below), Off (no upscaling) | Game's own |
 | | DLSS model | Transformer (K), Transformer 2 (M), Transformer 2 (L), NVIDIA default (shown where DLSS runs; used by DLSS and DLAA) | Transformer (K) |
 | | Render resolution | Auto (the game's own dynamic resolution), 100%, 75%, 67%, 50% (each with its size). With DLSS, FSR 3.1 or FSR 4: Auto, Quality (67%), Balanced (58%), Performance (50%), Ultra Performance (33%). With DLAA or FSR 4 Native AA: Native. With Off: Auto, 100%, 75%, 67%, 50%, 33% | Auto |
 | | Sharpness | 0 to 100%, in steps of 10 | 0% |
 | | Frame generation | Off, Auto, 2x to 8x | Off |
-| | Frame generation by | Auto (NVIDIA DLSS Frame Generation where it runs: RTX 40 and newer, with a temporal Upscaler; else the built-in one), Built-in (changes at once) | Auto |
+| | Frame generation by | Auto (NVIDIA DLSS Frame Generation where it runs: RTX 40 and newer, with a temporal Upscaler; else the built-in one; with frame generation on, the row shows who makes the frames, as Auto: DLSS FG, and why not DLSS FG when another does), Built-in FG (changes at once) | Auto |
 | | Frame pacing | Off, On | Off |
-| | Game frame rate cap | 60, 90, 120, 144, 165, 240 FPS, Uncapped (after a restart) | 60 FPS |
+| | Game frame rate cap | 60, 90, 120, 144, 165, 240 FPS, Uncapped, 30 FPS (after a restart) | 60 FPS |
 | | NVIDIA Reflex | Off, On, On + Boost (shown only on NVIDIA GPUs with `VK_NV_low_latency2`) | Off |
 | | AMD Anti-Lag 2 | Off, On (shown only on AMD GPUs with `VK_AMD_anti_lag`) | Off |
 | | Fullscreen | Off, On (the same as <kbd>F11</kbd>) | On |
 | | V-Sync | Auto, On, Off | Auto |
 | | Window scaling filter | Off, Catmull-Rom, Lanczos | Off |
-| | Aspect ratio | 16:9 (the game's own, black bars where the screen's shape differs), Monitor's shape: wider than 16:9, or narrower down to 5:4 (after a restart) | 16:9 |
 | | Ultrawide menus | Full width; Centred, blurred sides; Centred, black bars (with the Aspect ratio at the monitor's shape) | Centred, blurred sides |
 | | HDR | Off, Expanded, Native (the game's) | Off |
 | | HDR paper white | 80 to 400 nits (while HDR is on) | 200 nits |
 | | HDR peak brightness | 400 to 4000 nits (while HDR is on) | 1000 nits |
 | | HDR contrast | 50% to 200% around mid grey (while HDR is on) | 100% |
 | | HDR tone mapper | Vanilla (the game's curve), PsychoV35 (RenoDX's; with HDR set to Native. DLSS, FSR and TAAU do not take its scene yet: the game's own upscale runs) | Vanilla |
+| | Texture detail | Auto, Full, Medium, Low | Auto |
 | | Anisotropic filtering | Game's, 2x, 4x, 8x, 16x | 16x |
 | | GPU device | Auto, or each graphics card by name (after a restart) | Auto |
 | | VRAM budget | Auto, 3.6, 4.8, 6, 7.5, 9, 11 GB (2.2 GB only from the Minimum (4GB) preset); a quality preset sets it | Auto |
-| | Mesh shaders | Automatic, Native, Compute (after a restart) | Automatic |
 | Audio | Volume | 0 to 100%, in steps of 5 | 100% |
 | | Mute in background | Off, On | Off |
 | | Audio output | Auto, Stereo, 5.1 (after a restart) | Auto |
@@ -391,7 +392,7 @@ HDR, Detail, and GPU and memory (last: the rows to change when something is wron
 | | Game language | The game's 16 languages, each by its own name (after a restart) | The one built with |
 | | Menu language | Auto (the game's language), or English, Português (Brasil), Español (Latinoamérica), Español (España), Français, Deutsch, Italiano, Nederlands, Polski, Русский, 日本語, 한국어, 简体中文, 繁體中文 | Auto |
 | | Discord status | Off, On ("Playing Hookshot" and the time played in your Discord status, while Discord runs on this PC) | On |
-| | Skip opening | Off, On (skips the new-game opening: the story movie and Navi waking Link) | Off |
+| | Skip opening | Off, On (skips the new-game opening: the story movie and Navi waking Link; later cutscenes and the title screen stay) | Off |
 | | Bug report | Saves a report into a new folder in `bug-reports` (below) | |
 | Controls | Controller in background | Off, On | Off |
 | | Mouse camera | As the stick, Native | As the stick |
@@ -402,6 +403,7 @@ HDR, Detail, and GPU and memory (last: the rows to change when something is wron
 | | Invert camera Y | Off, On | Off |
 | | Camera speed | 50% to 400%, in steps of 25 | 100% |
 | | Stick dead zone | Default (24%), 5%, 10%, 15%, 20%, 30% | Default (24%) |
+| | Auto run | Off, On | Off |
 | | Rumble strength | Off, 25% to 150%, in steps of 25 | 100% |
 | | Layout preset | Nintendo (Def), Xbox / PC, Swap Face, Custom (on the Controls page) | Nintendo (Def) |
 | | Button prompts | Auto, Switch, Xbox, PlayStation 4, PlayStation 5, Steam Deck (on the Controls page) | Auto |
@@ -419,6 +421,14 @@ HDR, Detail, and GPU and memory (last: the rows to change when something is wron
   and the video memory limits for a card with that much memory. It leaves the Upscaler and Frame generation as
   you chose them: with DLSS, FSR 3.1 or FSR 4, the preset's resolution becomes their nearest mode. Changing most other
   rows yourself sets it back to Custom.
+- **Auto (this PC)**, which a first start begins on, chooses for the PC it runs on: the memory tier from the card's
+  video memory (an integrated GPU, a Steam Deck or a card without mesh shaders at Minimum), DLSS on an NVIDIA RTX card
+  or FSR 4 on an AMD RX 9000 where the build has them (else the game's own upscaler), and the screen's size as the
+  Output resolution where the tier has the memory for it. In the first minute of play it then measures the GPU: while
+  frames are missed with the GPU over 90% busy it lowers the Render resolution a step, and while the frame rate cap holds
+  with the GPU under half busy it raises it a step, up to the best mode that still upscales (DLSS or FSR Quality, or 100%
+  with the game's own; never DLAA or native AA). At most two steps; a PC that holds its cap keeps its picture. It chooses again when the card or the screen changes. `hookshot_log.txt`'s
+  `Auto (this PC)` lines say what it chose and why.
 - **Menu size** is how large the menu, the FPS counter and the start-up screen are drawn: Medium unless you choose Small
   (a desk) or Large (a TV across the room). It stays the same whether you use a controller or the keyboard and mouse.
 - **Field of view** changes the gameplay camera's vertical angle: 100% keeps the game's view, higher shows more of the
@@ -435,10 +445,12 @@ HDR, Detail, and GPU and memory (last: the rows to change when something is wron
   the frames that frame generation shows, so it has no effect while Frame generation is Off.
 - **Game frame rate cap** limits the frames the game renders. With a cap of 60 and Frame generation at 2x, the output
   can reach 120 FPS. Choose **Auto** in Frame generation to target the display's refresh rate instead of a fixed multiplier.
+  **30 FPS** reduces rendering work for handhelds and slower PCs while keeping real-time game speed. It is the last option
+  in the row so existing saved caps keep their meaning. At 30, Game speed follows real time even if Per frame is selected.
   A cap **past 60 is experimental**: the game keeps real time, but some cutscenes and bosses still count frames and can
   misbehave (Gohma running into the wall, the intro's narration running ahead: #1742). 60 is the safe choice.
   **Uncapped** renders as fast as the PC can (the game still keeps real time). A display that waits for its refresh still
-  holds the frames to its refresh rate: V-Sync on, or the driver's FIFO mode. `HOS_FPS_MAX=<61-1000>` sets a cap for one
+  holds the frames to its refresh rate: V-Sync on, or the driver's FIFO mode. `HOS_FPS_MAX=30` or `<61-1000>` sets a cap for one
   run.
 - **Bug report** writes a folder `bug-reports/<date>_<time>` in the game folder with what an issue needs: `report.txt`,
   which answers the [game problem form](https://github.com/NotRexed/Hookshot/issues/new?template=1-game-problem.yml)'s
@@ -463,18 +475,26 @@ HDR, Detail, and GPU and memory (last: the rows to change when something is wron
   and **Sharpness** sharpens it, by the picture's pixels: when the window is much larger than the picture (the Handheld
   Profile's 1536x864 on a 4K screen), a Sharpness kept from an older version is stronger than it was, so a lower one may
   suit.
-- **Output resolution:** its rows below show the sizes for the output you chose. Docked only. On a 1920x1080 display,
-  the 1920x1080 option keeps HUD and text sharp when the game fills the screen by mapping them pixel for pixel. At
-  3840x2160 the game's render targets get a bigger GPU pool, so a full-size 3D fits. On a 5120x1440 (32:9) ultrawide
-  monitor, 5120x1440 gives a native frame with a sharp HUD. The **Aspect ratio** at Monitor's shape widens the
-  cameras to the frame's shape and keeps the HUD and movies in the middle 16:9. Lazarus's default is the game's own 16:9,
-  with black bars where the screen's shape differs (above and below on 16:10, such as the Legion Go S's or the Steam Deck's);
-  options saved before options_version 7 move to it too, and from then on the row's choice is kept. For a size the menu does not offer (3440x1440, 2560x1080, ...), set
+- **Aspect ratio** and **Output resolution:** the menu lists the resolutions your screen offers (its display modes, as
+  Windows lists them, DSR's included), with the common sizes of each of those shapes your screen does not list (1440p, 4K
+  and 5K at 16:9, 1920x1200 and 2560x1600 at 16:10, 3440x1440 at 21:9, ...), grouped by shape. **Aspect ratio** lists
+  the shapes, your monitor's own marked "(monitor's)"; Lazarus's default is the game's own 16:9, with black bars where the screen's shape differs (above and below on the 16:10 screens of the Steam Deck and the Legion Go S);
+  **Output resolution** then lists that shape's sizes, your screen's own marked "(native)". A size larger than your
+  screen is drawn at that size and scaled down to the window. The marks are for the monitor the game's window is on, and
+  follow it: moved to another monitor, or the desktop's resolution changed while playing, the menu adds that screen's
+  sizes. On Linux the screen's size comes from SDL (the primary display). A portrait screen has no shape the game can
+  draw, so the row shows Monitor's shape as a value of its own there. Docked only. A shape other than 16:9 widens the cameras (21:9, 32:9) or narrows the
+  picture (16:10, 4:3, 5:4) and keeps the HUD and movies in the middle 16:9. At 16:9 on a 5120x1440 (32:9) monitor, the
+  game's 16:9 picture is stretched across the 32:9 output, sharp but wide. Options saved before options_version 7 move to
+  16:9, and from then on the row's choice is kept. The output's rows below show the sizes for the
+  output you chose. At your screen's own size the HUD and text map pixel for pixel. Above 2560x1440 the game's render
+  targets get a bigger GPU pool, so a full-size 3D fits. Where the screen's modes are not known (Linux), the menu offers
+  1920x1080, 2560x1440, 3840x2160, 5120x1440 and 5120x2880. For a size the menu does not offer, set
   `output_res=<width>x<height>` in `hookshot_options.ini`: each side a multiple of 8, at least 640x360, at most 5120x2880's
   pixels, and between 5:4 and 48:9 in shape; anything else uses the game's 2048x1152. The menu then offers it as its own
-  choice. With the **Aspect ratio** at Monitor's shape, a picture wider than 16:9 is kept to 5120x2160's pixels, so above
-  that a wide size is not a native frame. A custom output wider than 32:9 also sets the camera shape, even when the OS
-  reports a single 16:9 primary monitor. For three 16:9 monitors, use `5760x1080` or `7680x1440` and a window or logical display
+  choice. A picture wider or narrower than 16:9 is kept to 5120x2160's pixels, so above that a size of another shape is
+  not a native frame. A size's own shape sets the camera's, even when the OS reports a single 16:9 primary monitor. For
+  three 16:9 monitors, use `5760x1080` or `7680x1440` and a window or logical display
   that spans all three. Both render at full size: 7680x1440 has 5120x2160's pixels, the most a wide picture takes.
   For one run, set `HOS_OUTPUT_RES` to a size, such as `HOS_OUTPUT_RES=3840x2160`.
 - **Window scaling filter** matters only when your window's size differs from the Output resolution: for the sharpest
@@ -501,10 +521,12 @@ HDR, Detail, and GPU and memory (last: the rows to change when something is wron
 - **AMD Anti-Lag 2** Off is the game as without it. It works with Frame generation too: each game frame's present
   stage is given when that frame itself is shown, not at the made frames before it.
 - **Profile** runs the game as the console docked (at the Output resolution) or Handheld (1536x864): lighter on the GPU.
-- **Mesh shaders** is how the game's mesh programs (much of the scenery) run. Automatic uses the GPU's own mesh shaders
-  where it has them and the compute path where it has not. Native uses the GPU's own for every draw (a GPU without them
-  still gets the compute path). Compute uses the compute path on every GPU: try it if your card crashes or leaves objects
-  out; it is usually a little slower (`mesh_shaders=` in `hookshot_options.ini`, 0 to 2 in that order).
+- **Mesh shaders** (how the game's mesh programs, much of the scenery, run) is no longer a menu row: changing it made
+  the next start translate every shader again. The game uses the GPU's own mesh shaders where it has them, and the
+  compute path where it has not and on Linux AMD cards (issue 2245). For troubleshooting, `RX_VK_MESH_SHADERS=compute`
+  in `hookshot_env.txt` uses the compute path on every GPU (try it if your card crashes or leaves objects out; usually a
+  little slower), and `RX_VK_MESH_SHADERS=native` the GPU's own for every draw. A `mesh_shaders=` line left in
+  `hookshot_options.ini` is no longer read.
 - **Ultrawide menus:** with the Aspect ratio at the monitor's shape, the pause, item and map menus stay in the middle
   16:9, with what the game draws beside them out of focus, or black; Full width stretches them over the whole screen,
   as before. Loading screens and pre-rendered movies get the same sides. It changes at once.
@@ -519,7 +541,7 @@ HDR, Detail, and GPU and memory (last: the rows to change when something is wron
   down to 15 fps.
 - **FPS counter** shows in a corner (**FPS counter position**; at the top right while the menu is open), at one of
   four levels. **FPS** is the number alone (an options file's old On); with frame generation on, it also shows the
-  game's own rate. **Frame time** adds the game's frame time and its 1% low (the rate of the slowest 1% of frames over
+  game's own rate and who makes the frames: `Base 60, DLSS FG` (NVIDIA DLSS Frame Generation), `FSR 3.1 FG` or `Built-in FG`. **Frame time** adds the game's frame time and its 1% low (the rate of the slowest 1% of frames over
   the last 10 seconds). From this level on, the number and the frame time are green at the Game frame rate cap's rate,
   amber under it and red under two thirds of it. (The cap's rate is the display's refresh instead with V-Sync On when
   that is slower; with Uncapped and V-Sync not On there is no line, and the colours are against 60.) **Graph** adds
@@ -536,7 +558,9 @@ HDR, Detail, and GPU and memory (last: the rows to change when something is wron
   while the game was in front.
 - **Audio output** is the speakers the game mixes its sound for. Auto is 5.1 when your default output device has 5.1
   or more speakers, else stereo; Stereo or 5.1 chooses one whatever the device has (5.1 on stereo speakers is mixed
-  down). For one run, `HOS_AUDIO_CHANNELS=2` or `6` chooses stereo or 5.1 and wins over the menu.
+  down). Auto counts the speakers Windows names, not the channels: an audio interface whose outputs are not set up as
+  surround speakers (a Focusrite Scarlett's 8 outputs, for one) is stereo, so voices and the ocarina do not go to an
+  output with nothing connected. For one run, `HOS_AUDIO_CHANNELS=2` or `6` chooses stereo or 5.1 and wins over the menu.
 - **Microphone** is what the ocarina hears when the game's own microphone option is on (an instrument, or humming).
   Default follows Windows' default recording device; the list shows each microphone by name, and a change applies at
   once. A chosen microphone that is unplugged stays chosen (shown as not connected): Default stands in until it is
@@ -566,6 +590,11 @@ HDR, Detail, and GPU and memory (last: the rows to change when something is wron
   game's own camera speed option still picks the speed this multiplies.
 - **Stick dead zone:** how far a stick moves from center in any direction before it counts. Default is about 24%. Use
   a lower value for a precise stick or a higher one for a stick that drifts. The game also applies its own dead zone.
+- **Auto run:** the sprint goes on after the run button (A) is let go. Hold A for 0.4 s while moving (the roll, then
+  the sprint, as usual), let go, and A stays held for the game while the stick stays pushed; a short press (a roll on
+  its own) is not kept. Letting go of the stick or pressing A again stops it (a long hold keeps it again). Only while
+  Link is yours to move: an event (a talk, a cutscene), the pause menu, the map, the Insert menu and the ocarina's notes
+  end it, so A never picks an entry, skips text or plays a note there.
 - **Rumble strength** scales the controller's rumble: 100% is the game's own, Off turns it off. The game's HD rumble
   goes to a controller's heavy and light motors by its frequency.
 - **Motion controls** (Controls tab, Motion page): the controller's gyroscope aims where the game uses motion, as on the Switch. It works with
@@ -608,8 +637,8 @@ anything SDL reports as a Switch Pro Controller or Joy-Con, and that includes th
 `HOS_HD_RUMBLE=0` to give them the plain motor rumble.
 
 To change which gamepad button or key presses a Switch button, or which keys move and turn the camera, open the
-Controls tab's Controls page. Choose a row and a column (Gamepad or Keyboard), press <kbd>Enter</kbd> (or the bottom
-face button), then the new button or key. <kbd>Esc</kbd> cancels, <kbd>Delete</kbd> clears it, and Reset to defaults
+Controls tab's Controls page. Choose a row and a column (Input 1 or 2 for the gamepad, Key 1 or 2 for the keyboard: each
+control takes two of each), press <kbd>Enter</kbd> (or the bottom face button), then the new button or key. <kbd>Esc</kbd> cancels, <kbd>Delete</kbd> clears it, and Reset to defaults
 puts them all back. A gamepad button taken from another Switch button swaps with it. The page saves them in
 `hookshot_options.ini`.
 
@@ -786,7 +815,9 @@ without a format (`vk: fsr3: ... can run on this GPU` in the log). It upscales o
 scene's colour, its depth, motion from the camera with the skinned characters' own drawn over it (Link, his shield and
 the people around him keep their outline while they move), and the same camera jitter (`RX_VK_FSR_JITTER=0` turns it
 off). Things that move by themselves and are not skinned (Navi's body, props) can still trail. `RX_VK_FSR3_CHAIN=0` gives
-it the camera's motion alone, as before.
+it the camera's motion alone, as before. With HDR on **Native**, it takes the game's HDR colour as linear light, so
+highlights above the paper white are kept (`RX_VK_FSR3_HDR=0`: cut at the paper white, as before; with
+`RX_VK_FSR3_CHAIN=0` they are cut too).
 
 </details>
 
@@ -883,7 +914,7 @@ in `hookshot_options.ini`, `RX_VK_FSR4=1` or `2` for one run, `RX_VK_FSR4=0` to 
   takes their place.
 - **Or fetched for you (Windows):** `make_game.py --fsr --fetch-fsr-runtime --accept-amd-license` downloads those two
   DLLs and AMD's license from AMD's FidelityFX SDK repository at the v2.4.0 tag, checks each against its SHA-256, and
-  puts them in the game folder (`HOOKSHOT_FFX_SDK=<folder>` keeps them between builds, default `workfx-sdk`).
+  puts them in the game folder (`HOOKSHOT_FFX_SDK=<folder>` keeps them between builds, default `work/ffx-sdk`).
   `python -I scripts/ffx_sdk.py --accept-amd-license --game <game folder>` does the same for a game built already.
   Without `--accept-amd-license` nothing is downloaded (the script asks when run by hand), as with NVIDIA's license for
   DLSS. AMD DLLs already in the game folder that are not v2.4.0's (a newer SDK put there by hand) are left alone, and
@@ -1004,8 +1035,9 @@ pipelines before the title, and every player's play adds to it. To send yours:
    opens the [Submit your pipelines](https://github.com/NotRexed/Hookshot/issues/2034) issue in your browser.
 3. Attach the zip to a comment there, paste the report and fill in where you played.
 
-The zip holds only `hookshot_pipeline_states.bin` (shader hashes, formats and draw state: no game code, game data or
-personal info) and the report (the version, OS, GPU and driver, output and render resolution, upscaler, frame
+The zip holds only `hookshot_pipeline_states.bin` (shader hashes, formats and draw state, and the hashes of the compute
+programs your play ran, so that a release can keep those ready too: no game code, game data or personal info) and the
+report (the version, OS, GPU and driver, output and render resolution, upscaler, frame
 generation, HDR and the mods the game loaded). Nothing is uploaded for you. If the list is missing or damaged, it says
 so and saves nothing. In a run without a window (`HOS_HEADLESS`) the menu saves the zip but opens nothing.
 

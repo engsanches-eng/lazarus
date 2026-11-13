@@ -101,6 +101,8 @@ def say_prepare(words):
 
 
 def say(*words):
+    if words and words[0] == "stage" and len(words) > 1:
+        PHASES.enter(str(words[1]))
     if PREPARE:
         return say_prepare([str(w) for w in words])
     print("@@" + " ".join(str(w) for w in words), flush=True)
@@ -278,15 +280,18 @@ def save_times(work, data):
         print("the build times were not saved (%s)" % e, flush=True)
 
 
-def record_times(work, files, compile_seconds, total_seconds, modules=0, kind="build"):
+def record_times(work, files, compile_seconds, total_seconds, modules=0, kind="build", phases=None):
     """This build in the record: what each module it compiled took (a module a cache already held keeps the time it took
-    before), the compile's and the whole build's seconds. Returns the last build's total, to show beside this one."""
+    before), the compile's and the whole build's seconds, and where they went (phases: PhaseClock's). Returns the last
+    build's total, to show beside this one."""
     data = load_times(work)
     previous = data["builds"][-1]["total_seconds"] if data["builds"] else None
     data["seconds"].update({str(k): round(float(v), 1) for k, v in files.items() if v > 0})
     data["builds"].append({"when": time.strftime("%Y-%m-%d %H:%M:%S"), "kind": kind, "modules": int(modules),
                            "compiled": len(files), "compile_seconds": round(compile_seconds, 1),
                            "total_seconds": round(total_seconds, 1)})
+    if phases:
+        data["builds"][-1]["phases"] = {str(k): round(float(v), 1) for k, v in phases.items()}
     data["builds"] = data["builds"][-KEEP_BUILDS:]
     save_times(work, data)
     return previous
@@ -296,6 +301,62 @@ def clock(seconds):
     """A length of time the way the build's lines say it: '1:02:03'"""
     s = int(round(seconds))
     return "%d:%02d:%02d" % (s // 3600, s // 60 % 60, s % 60)
+
+
+class PhaseClock:
+    """Where a build's time went (the dev-loop proposal's A1): each stage (say("stage", ...)), the lift's steps and the compile's
+    parts, from the lines the steps already print and when they come, with no new line for the builders to read. The planning
+    is build.py's start to its "<n> files, <n> jobs" line (the object keys: every source read and hashed); the compile and
+    each link are its own "compiled in" and "linked" lines. Kept in build_times.json beside the totals (record_times) and shown
+    at the end of the build"""
+    LIFT_STEP = re.compile(r"lift: (.+?) (?:\(\d+ process(?:es)?\) )?in ([\d.]+)s \(")
+    DISCOVERY = re.compile(r"discovered \d+ functions \((\d+)s\)$")
+    PLANNED = re.compile(r"\d+ files, \d+ jobs, ")
+    COMPILED = re.compile(r"compiled in (\d+)s, \d+ failed$")
+    LINKED = re.compile(r"linked (.+?): \d+ MB \((\d+)s\)$")
+
+    def __init__(self, started, now=time.time):
+        self.now, self.seconds, self.stage, self.since = now, {}, "checks", started
+
+    def add(self, name, seconds):
+        self.seconds[name] = self.seconds.get(name, 0.0) + max(0.0, float(seconds))
+
+    def enter(self, stage):
+        """A stage starts (None: the build's timed part ends); the one before it has taken until now"""
+        t = self.now()
+        if self.stage is not None:
+            self.add(self.stage, t - self.since)
+        self.stage, self.since = stage, t
+
+    def line(self, line):
+        """A line a step printed, as it comes"""
+        m = self.LIFT_STEP.match(line)
+        if m:
+            return self.add("lift: " + m.group(1), m.group(2))
+        m = self.DISCOVERY.match(line)
+        if m:   # (the image and the functions' discovery, before the steps that say their own time)
+            return self.add("lift: image and discovery", m.group(1))
+        if self.stage == "compile" and self.PLANNED.match(line):
+            return self.add("compile: planning", self.now() - self.since)
+        m = self.COMPILED.match(line)
+        if m:
+            return self.add("compile: compiling", m.group(1))
+        m = self.LINKED.match(line)
+        if m:
+            return self.add("compile: linking " + os.path.basename(m.group(1).replace("\\", "/")), m.group(2))
+
+    def table(self):
+        """The lines the build ends with: each stage, the parts it is known to be made of under it"""
+        rows = []
+        for stage in ("checks", "read", "lift", "compile", "finish"):
+            if stage in self.seconds:
+                rows.append("  %-34s %6.0f s" % (stage, self.seconds[stage]))
+                rows += ["    %-32s %6.0f s" % (name.split(": ", 1)[1], s) for name, s in self.seconds.items()
+                         if name.startswith(stage + ": ")]
+        return ["where the time went:"] + rows
+
+
+PHASES = PhaseClock(STARTED)
 
 
 class Silent(Exception):
@@ -349,6 +410,7 @@ def run(cmd, env=None, on_line=None, check=True, output=None, show=None, cwd=ROO
             if shown is not None:
                 print(shown, file=output, flush=True)
             lines.append(line)
+            PHASES.line(line)
             if on_line:
                 on_line(line)
     except Silent:
@@ -540,7 +602,7 @@ def check_cpu():
 
 
 def check(a, work):
-    check_windows_sdk()   # (first: said in plain words when the game is chosen, not after it has been read)
+    check_windows_sdk(work)   # (first: said in plain words when the game is chosen, not after it has been read)
     check_cpu()
     if a.nup:
         probe = os.path.join(work, "probe")
@@ -650,26 +712,57 @@ def check_cpp_library(toolchain):
              "Visual Studio 2022 (or install it), then build again.")
 
 
-def check_linux_compiler():
-    """(linux) A C compiler that builds and links a program here (the AppImage's own clang and sysroot, else the system's):
-    found now, not 40 minutes in"""
-    sys.path.insert(0, os.path.join(ROOT, "third_party", "a64-kit", "tools"))
-    import toolchain
-    cc = toolchain.find("clang")
-    if not os.path.isfile(cc):
-        fail("No C compiler was found. Install clang (and lld), or use the Hookshot AppImage, which brings its own.")
-    sysroot = os.environ.get("HOOKSHOT_SYSROOT")
-    with tempfile.TemporaryDirectory() as d:
-        src = os.path.join(d, "t.c")
-        with open(src, "w") as f:
-            f.write(chr(10).join(("#include <stdio.h>", "#include <pthread.h>", "int main(void) { return 0; }", "")))
-        r = subprocess.run([cc] + (["--sysroot=" + sysroot] if sysroot else []) + ["-fuse-ld=lld", src, "-o", os.path.join(d, "t")],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if r.returncode:
-        print(r.stdout + r.stderr, flush=True)
-        errors = [l for l in r.stderr.splitlines() if "error" in l]
-        fail("The compiler could not build a test program: %s (install clang, lld and your system's C library headers: "
-             "libc6-dev on Debian and Ubuntu, glibc-devel on Fedora)" % (errors[0] if errors else "no message"))
+def check_linux_prerequisites(work=None):
+    """Use the compile's own resolvers before reading a dump; report all missing prerequisites together."""
+    import build
+    missing = []
+    requirements = os.path.join(ROOT, "requirements.txt")
+    source_build = os.path.isfile(requirements)
+    if source_build:   # (the AppImage already carries its Python environment)
+        with open(requirements, encoding="utf-8") as f:
+            for line in f:
+                # The top-level pins are mandatory; -r nx2/prompt_requirements.txt is optional.
+                pin = re.match(r"([A-Za-z0-9_]+)==", line)
+                if pin and importlib.util.find_spec(pin[1]) is None:
+                    missing.append("Python module %s (not on %s's isolated import path; install requirements.txt "
+                                   "with that Python)" % (pin[1], sys.executable))
+    prebuilt = build.prebuilt_renderer()
+    if prebuilt:
+        if not os.path.isfile(prebuilt):
+            missing.append("Vulkan renderer %s (HOOKSHOT_VK_PREBUILT)" % prebuilt)
+    else:
+        for (name, package, probe, env), found in zip(build.VK_HEADERS, build.vulkan_headers(work)):
+            if not found:
+                missing.append("%s header %s (CPM package %s: RX_CPM, clone/cpm, work/eg/.cache/cpm, then sibling "
+                               "mkw-recomp/Eglantine caches; then %s, package root or include/; then /usr/local, /usr)"
+                               % (name, probe, package, env))
+    build.ffmpeg_linux(missing)
+    cc = build.toolchain.find("clang")
+    # A source checkout also builds a64emit with clang++, even with a prebuilt renderer.
+    tools = [("clang", cc)]
+    if source_build or not prebuilt:
+        tools.append(("clang++", build.toolchain.find("clang++")))
+    for name, path in tools:
+        if not os.path.isfile(path):
+            missing.append("%s compiler %s (EMSDK/upstream/bin, else ~/emsdk/upstream/bin, then PATH; "
+                           "install clang or use the AppImage)" % (name, path))
+    if os.path.isfile(cc):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "t.c")
+            with open(src, "w") as f:
+                f.write(chr(10).join(("#include <stdio.h>", "#include <pthread.h>", "int main(void) { return 0; }", "")))
+            try:
+                r = subprocess.run([cc] + build.target() + ["-fuse-ld=lld", src, "-o", os.path.join(d, "t")],
+                                   capture_output=True, text=True, encoding="utf-8", errors="replace")
+                if r.returncode:
+                    missing.append("C compiler/linker test (clang -fuse-ld=lld, HOOKSHOT_SYSROOT when set; install "
+                                   "clang, lld and C library development headers): " + (r.stdout + r.stderr).strip())
+            except OSError as e:
+                missing.append("C compiler/linker test (%s): %s" % (cc, e))
+    if missing:
+        # One protocol message: GUI builders show the whole set, not only its first line.
+        fail("Missing Linux build prerequisites: " + "; ".join(" ".join(m.splitlines()) for m in missing))
+    print("Linux build prerequisites: OK", flush=True)
 
 
 def requested_jobs(value):
@@ -748,10 +841,10 @@ def check_mingw():
     print("the compiler: %s (no Visual Studio needed)" % os.environ["HOOKSHOT_MINGW"], flush=True)
 
 
-def check_windows_sdk():
+def check_windows_sdk(work=None):
     """The compiler is bundled; Microsoft's C library and Windows SDK may not be, by their licences. Found now, not 40 minutes in."""
     if LINUX:
-        return check_linux_compiler()
+        return check_linux_prerequisites(work)
     if bundled_mingw():
         return check_mingw()
     if CROSS:
@@ -1233,8 +1326,11 @@ def game_env(environ=None):
     return env
 
 
-def not_prepared(why):
-    print("%s (%s): the game prepares them at its first start" % (NOT_PREPARED, why), flush=True)
+FIRST_START = "the game prepares them at its first start"   # (the builders' windows tell this ending from the others)
+
+
+def not_prepared(why, then=FIRST_START):
+    print("%s (%s): %s" % (NOT_PREPARED, why, then), flush=True)
 
 
 def prepare_skipped(a, environ=None):
@@ -1271,7 +1367,10 @@ def prepare_shaders(cmd, folder=None, silence=PREPARE_SILENCE):
     elif code == 3:
         not_prepared("no usable Vulkan here")
     elif code == 4:   # (gpu/vk/vk_main.cpp prepare_watchdog: nothing moved for minutes, the driver stuck after a fault in it)
-        not_prepared("the GPU driver stopped responding")
+        # (it left hookshot_prepare_skipped beside the game: its starts skip the preparation too, so none stops in the same place,
+        # until a --prepare-shaders run goes through and removes it)
+        not_prepared("the GPU driver stopped responding",
+                     "the game builds each shader when it first draws it, and the next build or update tries the preparation again")
     elif code:
         not_prepared("the game stopped with exit status %d" % code)
     return code
@@ -1526,11 +1625,13 @@ def lift_sources():
     return sorted(seen)
 
 
-def lift_key(exefs, work, env):
+def lift_key(exefs, work, env, planning=True):
     """What the lift's output depends on: the game's code, the translator (lift_sources: the modules the lift imports from nx2/ and
     the vendored a64-kit, and their other files), the HLE functions host/ defines (hooked in the lift; the rest of host/ is compiled
     after it, so a change there alone does not lift again), the hot list, the chunk boundaries and the hot pieces, the lift's environment and the
-    Python running it. A file the lift never reads may be in it (a new build then lifts again); one it reads must be"""
+    Python running it. A file the lift never reads may be in it (a new build then lifts again); one it reads must be.
+    planning=False: all of it but the two files the lift itself writes for the next one (image/chunks.txt, image/hot_pieces.txt),
+    to tell whether anything else it reads changed while it ran"""
     import kit  # noqa: F401  (a64-kit on the path, for standalone)
     import standalone
     h = hashlib.sha1(sys.version.encode(), usedforsecurity=False)
@@ -1540,8 +1641,9 @@ def lift_key(exefs, work, env):
     files += [(ROOT, f) for f in lift_sources()]
     # (hot_pieces.txt: split_hot's pieces of the last lift, which the next split keeps. The pieces' C follows it, so two work folders
     # with other histories may lift the same game into other pieces: their keys differ too)
-    files += [(work, os.path.join(work, "hot_funcs.txt")), (work, os.path.join(work, "image", "chunks.txt")),
-              (work, os.path.join(work, "image", "hot_pieces.txt"))]
+    files += [(work, os.path.join(work, "hot_funcs.txt"))]
+    if planning:
+        files += [(work, os.path.join(work, "image", "chunks.txt")), (work, os.path.join(work, "image", "hot_pieces.txt"))]
     for base, f in files:
         if os.path.isfile(f):
             h.update(os.path.relpath(f, base).replace(os.sep, "/").encode() + bytes(1))
@@ -2034,15 +2136,12 @@ def main(a=None):
     a.language = build_language(a, out)   # (now: the folder's own language.txt is still the one the player left)
     warn_slow_disk(out, work)   # (a warning, not a stop: a hard drive still builds, only much slower)
     check_writable(out)
-    # (linux) the compiler probe waits until the compile. The game-free cache test stops at the lift, and a missing
-    # compiler is still said before the long compile, not after the package has been read
     check_cpu()   # (no game read yet: the AppImage on a CPU without AVX2 stops here)
-    if not LINUX:
-        check_windows_sdk()
+    if getattr(a, "fetch_ngx_sdk", False):
+        fetch_ngx_sdk(a)   # (the SDK selects a source renderer instead of HOOKSHOT_VK_PREBUILT)
+    check_windows_sdk(work)
     stop_stray_compilers(work, a.default_work)
     drop_stale_objects(work)
-    if getattr(a, "fetch_ngx_sdk", False):
-        fetch_ngx_sdk(a)
     # (AMD FSR 4: the build's switch for nx2/build.py, and the folder's mark for the next --update)
     if fsr_wanted(a, out):
         os.environ["HOOKSHOT_FSR"] = "1"
@@ -2130,9 +2229,14 @@ def main(a=None):
         refuse_dump_links(a.romfs)
         shutil.copytree(a.exefs, exefs)   # (unpacked in place: the user's copy stays as it is)
         run(PY + ["nx2/unpack.py", exefs])
+        # (before the folder's copies are touched: a dump of another version, refused, used to replace .hookshot_exefs first, and
+        # the next build from the .nup those were read from took them as its own and was refused too)
+        check_supported_build(exefs)
         link_or_copy(a.romfs, romfs)
         shutil.rmtree(kept, ignore_errors=True)
         shutil.copytree(exefs, kept)
+        with contextlib.suppress(FileNotFoundError):   # (the copies are this dump's now, not the .nup's that stamp names)
+            os.remove(os.path.join(out, ".hookshot_romfs"))
     check_supported_build(exefs)
 
     # (made once on the development PC: lists of addresses and counts, no game code)
@@ -2191,14 +2295,21 @@ def main(a=None):
                             except OSError as e:
                                 fail("Could not remove earlier translated file %s: %s. The new translation has not started." %
                                      (os.path.join(gen_dir, f), e))
+                inputs = lift_key(exefs, work, env, planning=False)   # (what the lift reads and does not write, as it starts)
                 run(PY + ["nx2/lift.py", "--standalone", "--write", "--exefs", exefs, "--work", work], env)
                 if os.path.isfile(os.path.join(work, "sa", "gen", "code_hot.c")):
                     run(PY + ["nx2/split_hot.py", os.path.join(work, "sa", "gen")], env)   # (eight files side by side: ~6 minutes, not 79)
                 # (the lift writes inputs of the next one: split_hot's kept pieces, image/hot_pieces.txt, which the key hashes. Its key is
                 # taken again now, from what the next build reads: taken before, in a fresh work folder (no hot_pieces.txt yet) it never
                 # matched the next build's, which translated the game again for nothing, ~5 minutes on Windows, and a player's first
-                # update after a new install did not keep the translation)
-                key = lift_key(exefs, work, env)
+                # update after a new install did not keep the translation). Only when nothing else it reads changed while it ran: a
+                # translator file edited during the lift would otherwise stamp C made from the old one with the new one's key, and the
+                # next build would skip a lift it needs. Then the key from before stays, and the next build translates again. The key is
+                # taken before that comparison: a file edited between the two is caught by it, and one edited after it is in no key that is
+                # kept (SimonKimDev, #2686)
+                after = lift_key(exefs, work, env)
+                if lift_key(exefs, work, env, planning=False) == inputs:
+                    key = after
                 write_lift_key(work, key)
             cut = lifted_cut_short(gen_dir)
             if not cut:
@@ -2213,8 +2324,6 @@ def main(a=None):
 
     translate()
 
-    if LINUX:
-        check_linux_compiler()
     # (the compile's timer: build.py reads the record of the earlier builds on this PC, says which files this run really
     # rebuilds and how long the rest will take, and reports each module's seconds; they go into the record below)
     env["HOOKSHOT_TIMES"] = times_path(work)
@@ -2375,7 +2484,8 @@ def main(a=None):
     with open(language, "w", encoding="utf-8", newline="\n") as f:
         f.write("# The game's language. Change the line below to one of the codes listed here, save, and start the game again.\n\n%s\n\n" % a.language)
         f.writelines("# %-8s %s\n" % l for l in LANGUAGES)
-    # (what the game's update offer reads, host/hos_update.c: which release these tools are, and where the builder that made the folder is)
+    # (what the folder's launcher reads, builder/setup/portable_home.h and builder/linux/hookshot-folder: which release these tools
+    # are, and where the builder that made the folder is)
     tag = ""
     for version_name in ("version.txt", "VERSION"):   # (VERSION: the AppImage, which has no version.txt)
         version = os.path.join(ROOT, version_name)
@@ -2392,9 +2502,6 @@ def main(a=None):
                 f.write("builder_local=1\n")
             elif os.environ.get("HOOKSHOT_BUILDER_EXE"):
                 f.write("builder=%s\n" % os.environ["HOOKSHOT_BUILDER_EXE"])
-                # (the Python builder: builder is its pythonw.exe, and these the arguments before --update, host/hos_update.c)
-                if os.environ.get("HOOKSHOT_BUILDER_ARGS"):
-                    f.write("builder_args=%s\n" % os.environ["HOOKSHOT_BUILDER_ARGS"])
     # (the game's code as read: written again by every build, so not left behind in the work folder. The translated code (sa\gen)
     # and the compiled objects stay: the next build skips the lift when nothing it reads changed (#428) and compiles only what
     # changed; the builder says how much stays and lets it go. Kept in a development checkout)
@@ -2417,8 +2524,10 @@ def main(a=None):
                       work, kept >> 20, "" if lift_kept is None else " and the translation's other files (%d MB)" % (lift_kept >> 20)),
                   flush=True)
     total_seconds = time.time() - STARTED
+    PHASES.enter(None)
     previous = record_times(work, run_files, compile_seconds, total_seconds, modules=plan[1],
-                            kind="update" if a.update else "build")
+                            kind="update" if a.update else "build", phases=PHASES.seconds)
+    print("\n".join(PHASES.table()), flush=True)
     print("the build took %s, compiled in %s%s" % (clock(total_seconds), clock(compile_seconds),
                                                     "" if previous is None else " (the last one %s)" % clock(previous)), flush=True)
     say("times", "%.0f" % total_seconds, "%.0f" % compile_seconds, "-1" if previous is None else "%.0f" % previous)
