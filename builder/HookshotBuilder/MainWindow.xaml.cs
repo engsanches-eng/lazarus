@@ -203,12 +203,12 @@ public partial class MainWindow : Window
                                 "its folder, compiling only what changed.";
                 BuildButton.Content = "Update";
                 break;
-            case Mode.UpToDate:
-                FilesTitle.Text = "Your game is up to date";
+            case Mode.UpToDate:   // ((lazarus) the game is opened from its desktop shortcut: the installer says it is there, and closes)
+                FilesTitle.Text = "The game is already installed";
                 FilesSub.Text = latestTag == null
-                    ? $"Your game is {game}, as this builder. GitHub did not answer, so newer versions could not be checked."
-                    : $"{game} is the latest version. Pick game files below only to build it again from scratch.";
-                BuildButton.Content = "Play";
+                    ? $"Your game is {game}. Open it from its desktop shortcut. GitHub did not answer, so newer versions could not be checked."
+                    : $"Your game is {game}, the latest version. Open it from its desktop shortcut. Pick game files below only to build it again from scratch.";
+                BuildButton.Content = "Close installer";
                 break;
             case Mode.UpdateBuilder:
                 FilesTitle.Text = "Build your game";
@@ -847,8 +847,7 @@ public partial class MainWindow : Window
         lang = l;
         CancelButton.Content = T(S.Cancel);
         BackButton.Content = T(S.Back);
-        OpenButton.Content = T(S.OpenFolder);
-        PlayText.Text = T(S.Play);
+        // ((lazarus) the ready page's one button closes the installer: not translated, as the shortcut's name)
         ShowLog.Content = T(ShowLog.IsChecked == true ? S.HideDetails : S.ShowDetails);
     }
 
@@ -864,9 +863,10 @@ public partial class MainWindow : Window
                 // (an up-to-date game built again for an upscaler it lacks: its own version, also when GitHub did not answer)
                 Updater.UpdateFolder(this, OutPath.Text, updateTarget ?? GameVersion(OutPath.Text), fetched: false, named: Switching);
                 return;
-            case Mode.UpToDate:
+            case Mode.UpToDate:   // ((lazarus) the desktop shortcut made again when it is gone, then the installer closes)
                 finished = OutPath.Text;
-                Play(sender, e);
+                if (!BuilderHome.Portable && !File.Exists(Finder.DesktopLink)) Finder.Shortcuts(finished, true, false);
+                Close();
                 return;
             case Mode.UpdateBuilder:
                 if (!OlderOk(Tools.Find()?.Version)) return;
@@ -1237,12 +1237,10 @@ public partial class MainWindow : Window
         var compiledNote = thisCompile > 0 ? $" (compiled in {Span(TimeSpan.FromSeconds(thisCompile))})" : "";
         ReadyNote.Text = $"{(updating ? "Updated" : "Built")} in {Span(elapsed.Elapsed)}{compiledNote}{Against(builtIn ?? elapsed.Elapsed)} · {finished}";
         if (!updating && Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") == null)
-            Finder.Shortcuts(finished, DesktopTick.IsChecked == true, StartTick.IsChecked == true);
+            Finder.Shortcuts(finished, !BuilderHome.Portable, false);   // ((lazarus) the desktop shortcut (not for a portable builder); no Start menu entry)
         else if (updating && Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") == null)
         {   // (the ones the player has, onto the folder's launcher; the boxes say which there are, and ticking one makes it)
-            DesktopTick.IsChecked = File.Exists(Finder.DesktopLink);
-            StartTick.IsChecked = File.Exists(Finder.StartLink);
-            Finder.RefreshShortcuts(finished);
+            Finder.Shortcuts(finished, !BuilderHome.Portable, false);   // ((lazarus) onto the game itself, with the ocarina)
         }
         if (Finder.ShortcutError != null) AddLog("shortcut not made: " + Finder.ShortcutError);
         ShowPage(ReadyPage);
@@ -1314,6 +1312,8 @@ public partial class MainWindow : Window
 
     void OpenFolder(object sender, RoutedEventArgs e) =>
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{finished}\"") { UseShellExecute = true });
+
+    void CloseInstaller(object sender, RoutedEventArgs e) => Close();
 
     void Play(object sender, RoutedEventArgs e)
     {

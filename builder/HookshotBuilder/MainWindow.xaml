@@ -279,17 +279,16 @@
           <TextBlock x:Name="ReadyTitle" Style="{StaticResource Heading}" Text="Your game is ready" HorizontalAlignment="Center" Margin="0,24,0,0"/>
           <TextBlock x:Name="ReadyNote" Style="{StaticResource Sub}" HorizontalAlignment="Center" TextAlignment="Center"/>
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,28,0,0">
-            <Button x:Name="PlayButton" Style="{StaticResource GoButton}" Click="Play">
-              <StackPanel Orientation="Horizontal">
-                <Path Data="M0,0 L11,7 L0,14 Z" Fill="{StaticResource GoInk}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                <TextBlock x:Name="PlayText" Text="Play" FontSize="16" FontWeight="Bold" Foreground="{StaticResource GoInk}"/>
-              </StackPanel>
+            <!-- (lazarus) the game is opened from its desktop shortcut: the installer only closes -->
+            <Button x:Name="PlayButton" Style="{StaticResource GoButton}" Click="CloseInstaller">
+              <TextBlock x:Name="PlayText" Text="Close installer" FontSize="16" FontWeight="Bold" Foreground="{StaticResource GoInk}"/>
             </Button>
-            <Button x:Name="OpenButton" Style="{StaticResource Quiet}" Height="50" Margin="12,0,0,0" Content="Open folder" Click="OpenFolder"/>
           </StackPanel>
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,22,0,0">
-            <CheckBox x:Name="DesktopTick" Style="{StaticResource Tick}" Content="Desktop shortcut" IsChecked="True" Click="ShortcutsChanged"/>
-            <CheckBox x:Name="StartTick" Style="{StaticResource Tick}" Content="Start menu entry" IsChecked="True" Margin="18,0,0,0" Click="ShortcutsChanged"/>
+            <!-- (lazarus) always a desktop shortcut, never a Start menu entry: the ticks stay for the code that reads them -->
+            <CheckBox x:Name="DesktopTick" Style="{StaticResource Tick}" Content="Desktop shortcut" IsChecked="True" Click="ShortcutsChanged" Visibility="Collapsed"/>
+            <CheckBox x:Name="StartTick" Style="{StaticResource Tick}" Content="Start menu entry" IsChecked="False" Margin="18,0,0,0" Click="ShortcutsChanged" Visibility="Collapsed"/>
+            <TextBlock Style="{StaticResource Note}" Text="Open the game from its desktop shortcut, The Legend of Zelda - Ocarina of Time."/>
           </StackPanel>
           <!-- what the builder keeps on this PC for quick updates (Storage.cs), and letting it go -->
           <StackPanel x:Name="StorageRow" Visibility="Collapsed" HorizontalAlignment="Center" Margin="0,26,0,0" MaxWidth="560">

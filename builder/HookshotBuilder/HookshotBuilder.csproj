@@ -29,6 +29,8 @@
     <Resource Include="Fonts\*.ttf" />
     <Resource Include="Images\hookshot.png" />
     <None Include="Fonts\Inter-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- (lazarus) the desktop shortcut's icon: the ocarina, original art made for Lazarus (Finder.Shortcuts) -->
+    <None Include="lazarus.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

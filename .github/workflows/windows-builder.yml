@@ -11,10 +11,17 @@
 # one the nightly holds.
 name: Windows builder
 
-# (lazarus) Not on pushes, tags or pull requests: Lazarus is built for Linux (SteamOS, the Legion Go S) for now. Started by
-# hand from the Actions tab (Run workflow) when a Windows build is wanted
+# (lazarus) On release tags, so a release carries the Windows setup beside the Linux AppImage, and by hand (Run workflow,
+# with a release's tag to add its files to it). Not on every push to main or on pull requests
 on:
+  push:
+    tags: ['*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: a release's tag, already created, to add the Windows files to (empty for a build without a release)
+        type: string
+        required: false
   workflow_call:
     inputs:
       tag:
