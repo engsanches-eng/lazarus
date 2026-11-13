@@ -83,12 +83,37 @@ def previous(a):
                 continue
             url = next((x["browser_download_url"] for x in r["assets"] if x["name"] == "hookshot-setup.txt"), None)
             if url:
+                data = get(url)
                 with open(a.out, "wb") as f:
-                    f.write(get(url))
-                print(r["tag_name"])
+                    f.write(data)
+                # ((lazarus) a list whose parts are gone from their builder-parts (pruned since) is passed over: the
+                # package would stop on the first, as v2.2.4's did on a Python part)
+                gone = missing_parts(a.out)
+                if gone:
+                    print("%s %s: %d part(s) no longer there (%s): an older list" % (repo, r["tag_name"], len(gone), gone[0]),
+                          file=sys.stderr)
+                    continue
+                print("%s %s" % (repo, r["tag_name"]))
                 return 0
     print("no release with a hookshot-setup.txt in %s" % ", ".join(a.repo), file=sys.stderr)
     return 1
+
+
+def missing_parts(path):
+    """The links of the list's parts that do not answer (a HEAD request, redirects followed)"""
+    gone = []
+    for w in part_lines(path):
+        url = w[6]
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "hookshot-ci"}, method="HEAD")
+            with urllib.request.urlopen(req, timeout=60):
+                pass
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 410):
+                gone.append(url)
+        except (urllib.error.URLError, TimeoutError):
+            pass   # (a link that does not answer now is not taken as gone)
+    return gone
 
 
 def part_lines(path):
