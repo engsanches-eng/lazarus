@@ -110,8 +110,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # ((lazarus) upstream's list first: its parts are kept for its releases, while an older Lazarus list can name parts
+          # upstream has since pruned (v2.2.4's first run: its Python part was gone). Lazarus's own list when upstream has none)
           if python -I scripts/release_parts.py previous "$RUNNER_TEMP/previous-setup.txt" \
-              --repo "$GITHUB_REPOSITORY" --repo NotRexed/Hookshot --skip-tag "$TAG"; then
+              --repo NotRexed/Hookshot --repo "$GITHUB_REPOSITORY" --skip-tag "$TAG"; then
             echo "PREVIOUS=$RUNNER_TEMP/previous-setup.txt" >> "$GITHUB_ENV"
           elif [[ -n $RELEASE_TAG ]]; then
             exit 1
