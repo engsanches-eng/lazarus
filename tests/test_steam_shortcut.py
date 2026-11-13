@@ -12,6 +12,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+RUN_ALL_SKIP = {"windows": "Steam's library on SteamOS: a POSIX launch script and file modes"}
 sys.path.insert(0, str(ROOT / "builder" / "linux"))
 import steam_shortcut  # noqa: E402
 

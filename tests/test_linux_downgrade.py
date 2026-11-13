@@ -111,7 +111,7 @@ class Admission(unittest.TestCase):
         with mock.patch.object(linux_update, "game_version", return_value=("v2.2.0", True)):
             app.apply_mode()
             self.assertEqual(app.mode, "up-to-date")
-            self.assertEqual(app.build_button.config["text"], "Play")
+            self.assertEqual(app.build_button.config["text"], "Close installer")   # ((lazarus) the game is played from Steam)
             self.assertIn("newer than", app.status.get())
             app.launch_folder = "authored-game"
             app.apply_launch()

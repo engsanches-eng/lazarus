@@ -804,7 +804,7 @@ class Builder(tk.Tk):
         """Windows' SetStep: the steps in a pill, the one now in blue, the ones done with a green tick. One image (the shapes),
         and the labels with their x, for the canvas to write over it"""
         px = self.px
-        names = ("Game files", "Build", "Play")
+        names = ("Game files", "Build", "Steam")   # ((lazarus) the last step: the game in Steam's library)
         container = mix(WHITE, PAGE, 0x0B / 255)
         layers, labels = [], []
         x = px(4)
@@ -1116,7 +1116,7 @@ class Builder(tk.Tk):
             self.status.set("Hookshot %s is available. Your game is %s. Update downloads only what changed, then compiles what changed."
                             % (target, game))
         elif self.mode == "up-to-date" and linux_update.older_version(target, game):
-            self.status.set("Your game is %s, newer than this builder's update target %s. Play keeps this version; "
+            self.status.set("Your game is %s, newer than this builder's update target %s. Your game keeps this version; "
                             "choose another update track to change versions." % (game, target))
         elif self.mode == "up-to-date" and self.latest is None:
             self.status.set("Your game is %s, as this builder. GitHub did not answer, so newer versions could not be checked." % game)
@@ -1134,7 +1134,7 @@ class Builder(tk.Tk):
         target = linux_update.update_target(self.latest, self.tools, self.switching())
         show = False
         if not self.switching() and linux_update.older_version(target, game):
-            self.launch_status.set("Your game is %s, newer than this builder's update target %s. Play keeps this version." % (game, target))
+            self.launch_status.set("Your game is %s, newer than this builder's update target %s. Your game keeps this version." % (game, target))
         elif target and game and game != target and kept:
             self.launch_status.set("Update available: %s" % target)
             show = True
